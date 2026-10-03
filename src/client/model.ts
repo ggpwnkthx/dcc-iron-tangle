@@ -17,6 +17,7 @@ import {
   axisBase,
   logoRings,
   modeledHubPlatformCount,
+  nightmarePoint,
   nodes,
   ringJunctions,
   ringPath,

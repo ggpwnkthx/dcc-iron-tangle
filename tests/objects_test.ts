@@ -1,4 +1,4 @@
-import { objectKey, parseObject } from "../src/client/objects.ts";
+import { objectKey, objectRouteId, parseObject } from "../src/client/objects.ts";
 import { assert, equal } from "./assert.ts";
 
 const registry = {
@@ -41,4 +41,12 @@ Deno.test("object keys preserve saved-data compatibility and distinguish paired 
   equal(objectKey({ kind: "yard", id: 0, face: -1 }), "yard::-1");
   equal(objectKey({ kind: "station", route: "color-0", n: 24 }), "station:color-0:24");
   equal(objectKey(), "overview::whole");
+});
+
+Deno.test("route-like object identities expose their route without optional-field probing", () => {
+  equal(objectRouteId({ kind: "route", id: "color-0" }), "color-0");
+  equal(objectRouteId({ kind: "train", id: "nightmare" }), "nightmare");
+  equal(objectRouteId({ kind: "station", route: "color-0", n: 83 }), "color-0");
+  equal(objectRouteId({ kind: "stop", route: "nightmare", t: 0, label: "start" }), "nightmare");
+  equal(objectRouteId({ kind: "mimic", id: 1 }), null);
 });

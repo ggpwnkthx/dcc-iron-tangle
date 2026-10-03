@@ -51,9 +51,11 @@ id and an update callback; removing a dynamic object removes the callback with t
 render loop advances one shared clock instead of knowing how every train, cutaway carriage, or cargo
 object moves.
 
-Keep mesh-building code in `model.ts` when an object needs Babylon-specific construction. Put the
-identity, placement parameters, and tunable movement parameters in `scene_specs.ts` so edits remain
-localized and reviewable.
+The renderer keeps lifecycle, selection, camera, and render-loop orchestration in `model.ts`.
+Reusable renderer concerns live under `src/client/model/`: numerical helpers in `math.ts`, Babylon
+primitive builders in `meshes.ts`, palette/material lifecycle in `theme.ts`, and inferred ring/station
+geometry in `topology.ts`. Keep identity, placement parameters, and tunable movement parameters in
+`scene_specs.ts` so edits remain localized and reviewable.
 
 Babylon uses its typed ES module package, resolved by Deno's import map:
 

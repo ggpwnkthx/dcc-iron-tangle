@@ -78,7 +78,7 @@ Deno.test("a nonmatching ETag returns the current asset", async () => {
   await response.body?.cancel();
 });
 
-Deno.test("missing assets and source files outside public return typed 404 responses", async () => {
+Deno.test("missing assets and source files outside dist return typed 404 responses", async () => {
   for (const path of ["/missing.js", "/src/main.ts", "/deno.json", "/README.md", "/.gitignore"]) {
     const response = await handler(request(path));
     equal(response.status, 404);
@@ -120,17 +120,17 @@ Deno.test("HEAD errors have no response body", async () => {
 });
 
 Deno.test("canonical root checks reject neighboring and parent directories", () => {
-  assert(isInsideRoot("/app/public", "/app/public/assets/app.js"));
-  assert(!isInsideRoot("/app/public", "/app/public-copy/private.txt"));
-  assert(!isInsideRoot("/app/public", "/app/src/main.ts"));
-  assert(!isInsideRoot("/app/public", "/app/public"));
+  assert(isInsideRoot("/app/dist", "/app/dist/assets/app.js"));
+  assert(!isInsideRoot("/app/dist", "/app/dist-copy/private.txt"));
+  assert(!isInsideRoot("/app/dist", "/app/src/main.ts"));
+  assert(!isInsideRoot("/app/dist", "/app/dist"));
 });
 
-Deno.test("invalid public roots fail at startup", async () => {
-  for (const publicRoot of [new URL("https://example.com/"), new URL("file:///not-a-directory")]) {
+Deno.test("invalid asset roots fail at startup", async () => {
+  for (const assetRoot of [new URL("https://example.com/"), new URL("file:///not-a-directory")]) {
     let failed = false;
     try {
-      await createHandler({ publicRoot });
+      await createHandler({ assetRoot });
     } catch (error: unknown) {
       assert(error instanceof TypeError);
       failed = true;

@@ -3,24 +3,15 @@ import type * as B from "@babylonjs/core";
 export type View = "whole" | "known" | "top" | "logo" | "yard" | "abyss" | "cutaway";
 export type LandmarkId = "logo" | "abyss" | "cutaway" | "wreckage" | "portals";
 export type IronObject =
-  & (
-    | { kind: "overview"; view: View }
-    | { kind: "route" | "train" | "node"; id: string }
-    | { kind: "station"; route: string; n: number }
-    | { kind: "stop"; route: string; t: number; label: string }
-    | { kind: "yard"; id: number; face: number }
-    | { kind: "mimic"; id: number }
-    | { kind: "landmark"; id: LandmarkId }
-  )
-  & {
-    id?: string | number;
-    route?: string;
-    n?: number;
-    t?: number;
-    face?: number;
-    view?: View;
-    label?: string;
-  };
+  | { kind: "overview"; view: View }
+  | { kind: "route"; id: string }
+  | { kind: "train"; id: string }
+  | { kind: "node"; id: string }
+  | { kind: "station"; route: string; n: number }
+  | { kind: "stop"; route: string; t: number; label: string }
+  | { kind: "yard"; id: number; face: 1 | -1 }
+  | { kind: "mimic"; id: number }
+  | { kind: "landmark"; id: LandmarkId };
 export type Group = "stations" | "trains" | "lines" | "yards" | "bosses" | "landmarks";
 export interface CatalogEntry {
   key: string;
@@ -65,7 +56,7 @@ export interface Route {
   parent: B.TransformNode;
   length: number;
   distancePoint: (distance: number) => B.Vector3;
-  face?: number;
+  face?: 1 | -1;
   counterpart?: B.Mesh;
   mesh?: B.Mesh;
   hidden?: B.Mesh;
@@ -80,7 +71,7 @@ export interface Train {
 }
 export interface Yard {
   id: number;
-  sign: number;
+  sign: 1 | -1;
   base: B.Vector3;
   parent: B.TransformNode;
   yard: B.TransformNode;

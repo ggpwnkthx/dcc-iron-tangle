@@ -11,17 +11,17 @@ import {
 export type RequestHandler = (request: Request) => Promise<Response>;
 
 export interface HandlerOptions {
-  readonly publicRoot?: URL;
+  readonly assetRoot?: URL;
   readonly onError?: (error: unknown) => void;
 }
 
-/** Stream public assets without buffering the Babylon bundle or exposing source files. */
+/** Stream generated site assets without buffering the Babylon bundle or exposing source files. */
 export async function createHandler(options: HandlerOptions = {}): Promise<RequestHandler> {
-  const publicRoot = options.publicRoot ?? new URL("../public/", import.meta.url);
-  if (publicRoot.protocol !== "file:" || !publicRoot.pathname.endsWith("/")) {
-    throw new TypeError("The public root must be an absolute file URL ending in /.");
+  const assetRoot = options.assetRoot ?? new URL("../dist/", import.meta.url);
+  if (assetRoot.protocol !== "file:" || !assetRoot.pathname.endsWith("/")) {
+    throw new TypeError("The asset root must be an absolute file URL ending in /.");
   }
-  const canonicalRoot = await Deno.realPath(publicRoot);
+  const canonicalRoot = await Deno.realPath(assetRoot);
   const onError = options.onError ??
     ((error: unknown) => console.error("Asset request failed:", error));
 
@@ -31,7 +31,7 @@ export async function createHandler(options: HandlerOptions = {}): Promise<Reque
       if (request.method !== "GET" && request.method !== "HEAD") {
         throw new HttpError(405, "method_not_allowed", "Only GET and HEAD are supported.");
       }
-      const asset = assetUrl(request.url, publicRoot);
+      const asset = assetUrl(request.url, assetRoot);
       const path = await Deno.realPath(asset);
       if (!isInsideRoot(canonicalRoot, path)) throw new HttpError(404, "not_found", "Not found.");
       file = await Deno.open(path, { read: true });

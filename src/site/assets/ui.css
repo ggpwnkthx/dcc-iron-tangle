@@ -940,8 +940,7 @@ textarea.form-control {
   box-shadow: var(--shadow-sm);
 }
 
-.form-check:not(.form-switch)
-  .form-check-input:not(:disabled):not(:checked):hover {
+.form-check:not(.form-switch) .form-check-input:not(:disabled):not(:checked):hover {
   background-color: var(--card);
 }
 
@@ -950,8 +949,7 @@ textarea.form-control {
   background-color: var(--primary);
 }
 
-.form-check:not(.form-switch)
-  .form-check-input[type="checkbox"]:checked::before {
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked::before {
   display: block;
   width: 100%;
   height: 100%;
@@ -1049,9 +1047,9 @@ textarea.form-control {
   border: 0;
   accent-color: var(--primary);
   background: linear-gradient(
-      color-mix(in srgb, var(--foreground) 7%, transparent),
-      color-mix(in srgb, var(--foreground) 7%, transparent)
-    )
+    color-mix(in srgb, var(--foreground) 7%, transparent),
+    color-mix(in srgb, var(--foreground) 7%, transparent)
+  )
     center / 100% 2px no-repeat;
 }
 
@@ -1098,11 +1096,7 @@ textarea.form-control {
   opacity: 0.4;
 }
 
-.btn:not(.btn-primary, .viz-tile):is(
-  [aria-pressed="true"],
-  [aria-selected="true"],
-  .is-selected
-) {
+.btn:not(.btn-primary, .viz-tile):is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
   border-color: var(--primary);
   color: var(--primary-foreground);
   background: var(--primary);
@@ -1156,13 +1150,7 @@ textarea.form-control {
     height: 44px;
   }
 
-  .form-control:is(
-    [type="date"],
-    [type="datetime-local"],
-    [type="month"],
-    [type="time"],
-    [type="week"]
-  ) {
+  .form-control:is([type="date"], [type="datetime-local"], [type="month"], [type="time"], [type="week"]) {
     min-width: 0;
     max-width: 100%;
     padding-block: 8px;

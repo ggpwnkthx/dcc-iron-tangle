@@ -15,11 +15,11 @@ cd iron-tangle
 deno task dev
 ```
 
-Open **http://127.0.0.1:8000/**. Development mode first builds the browser app, then runs Deno's
-bundler in watch mode alongside the local server. TypeScript edits rebuild `public/assets/app.js`;
-server edits restart the listener. Refresh the browser after frontend changes. HTML and CSS are
-served directly, so they need only a browser refresh. Use `deno task dev --port 8080` to change the
-port. Ctrl+C stops both development processes.
+Open **http://127.0.0.1:8000/**. Development mode first builds the browser app into the ignored
+`dist/` directory, then runs Deno's bundler in watch mode alongside the local server. TypeScript
+edits rebuild `dist/assets/app.js`; HTML and CSS edits under `src/site/` are mirrored into `dist/`.
+Server edits restart the listener. Refresh the browser after frontend changes. Use
+`deno task dev --port 8080` to change the port. Ctrl+C stops both development processes.
 
 For a release build and server:
 
@@ -28,16 +28,17 @@ deno task build
 deno task start
 ```
 
-The ZIP includes the generated browser bundle. `deno task start` serves that existing build without
-rebuilding it. You can also open `public/index.html` directly for the standalone browser version.
-Saved objects and themes are stored per browser origin; HTTP and file origins have separate storage.
+`deno task build` recreates `dist/` from the authored files in `src/site/` and the TypeScript
+client. `deno task start` serves that existing build without rebuilding it. You can also open
+`dist/index.html` directly for the standalone browser version. Saved objects and themes are stored
+per browser origin; HTTP and file origins have separate storage.
 
 ### TypeScript and packages
 
 All application logic is genuine TypeScript under `src/client/`: typed scene construction,
 discriminated selection objects, routes, trains, DOM access, navigation, storage validation, and UI
-controls. There are no handwritten application JavaScript files in `public/`; `app.js` is generated.
-HTML and CSS remain their native formats.
+controls. There are no handwritten application JavaScript files in `dist/`; `app.js` is generated.
+HTML and CSS remain authored in their native formats under `src/site/`.
 
 ### Scene authoring
 
@@ -85,7 +86,7 @@ Deno's cache. The browser uses only local assets and does not fetch packages at 
 | Command                 | Purpose                                                                 |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `deno task dev`         | Initial build, watched browser rebuilds, and watched local server       |
-| `deno task build`       | Strictly check and create a minified browser bundle                     |
+| `deno task build`       | Recreate `dist/`, copy site assets, and build the minified browser app  |
 | `deno task build:watch` | Watch and rebuild browser TypeScript with type checking                 |
 | `deno task start`       | Serve the existing browser build                                        |
 | `deno task fmt`         | Format all TypeScript, configuration, and documentation                 |
@@ -95,26 +96,27 @@ Deno's cache. The browser uses only local assets and does not fetch packages at 
 | `deno task check`       | Check formatting, lint, types, and tests together                       |
 
 Strict mode, checked indexed access, and exact optional properties apply to the browser source as
-well as the server. The generated bundle is excluded from formatting/linting. Rebuild before running
-tests in a fresh git checkout, where generated output is ignored.
+well as the server. The generated `dist/` tree is excluded from version control, formatting, and
+linting. `deno task test` builds it before running server tests, so tests work from a clean
+checkout.
 
 ### Permissions and serving
 
-The server uses `Deno.serve` and streams `public/` assets. It supports GET, HEAD, MIME types, and
-ETag revalidation. Canonical path checks reject source/config files, directory listings, and
-escaping symlinks. Typed JSON errors handle rejected requests.
+The server uses `Deno.serve` and streams generated `dist/` assets. It supports GET, HEAD, MIME
+types, and ETag revalidation. Canonical path checks reject source/config files, directory listings,
+and escaping symlinks. Typed JSON errors handle rejected requests.
 
-The start task grants read access only to `public/` and network access only to `127.0.0.1`.
-Development additionally grants subprocess access to `deno`, so it can run the bundler and server;
-it does not grant application-wide write or network access. The bundler CLI writes only its declared
-output. Tests need read access only to `public/`. Dependency downloads are managed by Deno's CLI,
-separately from the application's runtime network permission.
+The start task grants read access only to `dist/` and network access only to `127.0.0.1`.
+Development additionally grants read access to `src/site/`, write access to `dist/`, and subprocess
+access to `deno` so it can synchronize static assets, run the bundler, and start the server. Tests
+build the site first and then grant read access only to `dist/`. Dependency downloads are managed by
+Deno's CLI, separately from the application's runtime network permission.
 
 CLI host options are `127.0.0.1`, `localhost`, `::1`, and `0.0.0.0`; another host needs an explicit
 matching permission, for example:
 
 ```sh
-deno run --no-prompt --allow-read=public --allow-net=localhost:8000 src/main.ts --host localhost
+deno run --no-prompt --allow-read=dist --allow-net=localhost:8000 src/main.ts --host localhost
 ```
 
 Large assets are streamed instead of read entirely into server memory; file handles close when
@@ -264,10 +266,18 @@ iron-tangle/
 ├── README.md
 ├── .gitignore
 ├── .vscode/settings.json
-├── scripts/dev.ts
+├── scripts/
+│   ├── build.ts
+│   ├── dev.ts
+│   └── site.ts
 ├── src/
 │   ├── main.ts
 │   ├── server.ts
+│   ├── site/
+│   │   ├── index.html
+│   │   └── assets/
+│   │       ├── model.css
+│   │       └── ui.css
 │   ├── lib/
 │   │   ├── config.ts
 │   │   └── http.ts
@@ -284,12 +294,6 @@ iron-tangle/
 │   ├── config_test.ts
 │   ├── server_test.ts
 │   └── objects_test.ts
-├── public/
-│   ├── index.html
-│   └── assets/
-│       ├── app.js (generated)
-│       ├── model.css
-│       └── ui.css
 └── licenses/
     ├── babylonjs-LICENSE.md
     └── babylonjs-NOTICE.md
@@ -297,23 +301,24 @@ iron-tangle/
 
 ## Files and editing
 
-| File                                       | Purpose                                                                           |
-| ------------------------------------------ | --------------------------------------------------------------------------------- |
-| `deno.json`, `deno.lock`                   | Deno tasks, pinned package mapping, strict compiler configuration, integrity lock |
-| `scripts/dev.ts`                           | Build/watch/server orchestration and process cleanup                              |
-| `src/main.ts`, `src/server.ts`             | Typed streaming HTTP server                                                       |
-| `src/lib/`                                 | Server CLI validation, path containment, MIME types, HTTP errors                  |
-| `src/client/main.ts`                       | Explicit UI → scene → navigation initialization                                   |
-| `src/client/model.ts`                      | Typed Babylon geometry, routes, trains, camera, picking, animation                |
-| `src/client/interface.ts`                  | Responsive panels, keyboard access, themes, fullscreen, browser storage           |
-| `src/client/navigation.ts`                 | Catalog, search, filters, saved/recent selections, history, connections           |
-| `src/client/types.ts`                      | Shared domain objects, route/train types, scene metadata and targets              |
-| `src/client/objects.ts`                    | Stored JSON validation and stable object keys                                     |
-| `src/client/dom.ts`                        | Typed DOM lookup and required-value/context helpers                               |
-| `public/index.html`, `public/assets/*.css` | Page markup and styles                                                            |
-| `public/assets/app.js`                     | Generated browser artifact; edit TypeScript sources instead                       |
-| `tests/`                                   | Deno configuration, server, and object validation tests                           |
-| `licenses/`                                | Babylon license and notice                                                        |
+| File                                           | Purpose                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `deno.json`, `deno.lock`                       | Deno tasks, pinned package mapping, strict compiler configuration, integrity lock |
+| `scripts/build.ts`, `scripts/site.ts`          | Reproducible `dist/` generation and static-site synchronization                   |
+| `scripts/dev.ts`                               | Build/watch/server orchestration and process cleanup                              |
+| `src/main.ts`, `src/server.ts`                 | Typed streaming HTTP server                                                       |
+| `src/lib/`                                     | Server CLI validation, path containment, MIME types, HTTP errors                  |
+| `src/client/main.ts`                           | Explicit UI → scene → navigation initialization                                   |
+| `src/client/model.ts`                          | Typed Babylon geometry, routes, trains, camera, picking, animation                |
+| `src/client/interface.ts`                      | Responsive panels, keyboard access, themes, fullscreen, browser storage           |
+| `src/client/navigation.ts`                     | Catalog, search, filters, saved/recent selections, history, connections           |
+| `src/client/types.ts`                          | Shared domain objects, route/train types, scene metadata and targets              |
+| `src/client/objects.ts`                        | Stored JSON validation and stable object keys                                     |
+| `src/client/dom.ts`                            | Typed DOM lookup and required-value/context helpers                               |
+| `src/site/index.html`, `src/site/assets/*.css` | Page markup and styles                                                            |
+| `dist/`                                        | Generated site artifact; ignored by git and deployed by GitHub Actions            |
+| `tests/`                                       | Deno configuration, server, and object validation tests                           |
+| `licenses/`                                    | Babylon license and notice                                                        |
 
 Geometry is generated in TypeScript; there are no missing mesh files or remote textures. The
 searchable catalog covers identified points and representative landmarks. Thousands of unnamed rail

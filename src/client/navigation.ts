@@ -3,7 +3,7 @@ import {
   PRIMARY_STAIRWELL_STATIONS,
   stationCanonRole,
 } from "./canon.ts";
-import { objectKey as key, parseObject } from "./objects.ts";
+import { objectKey as key, objectRouteId, parseObject } from "./objects.ts";
 import { element, query, required, rootElement } from "./dom.ts";
 import { MIMIC_SPECS, YARD_SPECS } from "./scene_specs.ts";
 /* Object discovery, saved places, recent selections, and connected stops. */
@@ -72,7 +72,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     nodes: new Set(Object.keys(model.nodes)),
   };
   function titleOf(o: IronObject) {
-    const unmapped = String(o.route || o.id || "").match(/^unmapped-(\d+)-(-?1)$/);
+    const unmapped = objectRouteId(o)?.match(/^unmapped-(\d+)-(-?1)$/);
     return unmapped
       ? "Unmapped line " + (Number(unmapped[1]) * 2 + (unmapped[2] === "1" ? 1 : 2)) +
         (o.kind === "station" ? " " + o.n : "")
@@ -92,7 +92,9 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
   function add(object: IronObject, group: Group, meta: string, aliases = "", rank = 100) {
     catalog.push(entry(object, group, meta, aliases, rank));
   }
-  add(
+  function rebuildCatalog() {
+    catalog.length = 0;
+    add(
     { kind: "landmark", id: "logo" },
     "landmarks",
     "Named circuits · interpreted unequal rings",
@@ -200,7 +202,13 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     "homeward bound stairs staff 24",
     36,
   );
-  catalog.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
+    model.runtimeObjects.forEach((object) => {
+      if (!catalog.some((candidate) => candidate.key === key(object))) {
+        catalog.push(entryFor(object));
+      }
+    });
+    catalog.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
+  }
 
   function dynamicStation(query: string) {
     const number = query.match(/(?:^|\s)(\d{1,3})(?:$|\s)/);
@@ -257,6 +265,8 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
         : "Selected in the scene · reconstructed",
     );
   }
+  rebuildCatalog();
+
   function restoreObjects(name: string) {
     const stored = ui.readStore(name, []);
     return Array.isArray(stored)
@@ -268,7 +278,9 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
   const favorites = new Map(restoreObjects("favorites").map((o) => [key(o), o]));
   let recent = restoreObjects("recent").slice(0, 20);
   function routeColor(object: IronObject) {
-    const route = object.route || object.id, known = model.knownRoutes.find((r) => r.id === route);
+    const route = objectRouteId(object);
+    if (!route) return null;
+    const known = model.knownRoutes.find((r) => r.id === route);
     if (known) return model.routeColor(known.i).toHexString();
     const colors: Record<string, string> = {
       nightmare: "var(--purple)",
@@ -525,7 +537,8 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
         ? []
         : [{ kind: "landmark", id: "abyss" }];
     }
-    const id = String(o.route || o.id);
+    const id = objectRouteId(o);
+    if (!id) return [];
     if (o.kind === "stop") return [{ kind: "route", id }];
     if (o.kind === "route" || o.kind === "train" || o.kind === "station") {
       if (model.namedRoutes[id]) {
@@ -665,6 +678,10 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     "iron:selection",
     (event) => updateSelection((event as CustomEvent<IronObject>).detail),
   );
+  root.addEventListener("iron:objects-changed", () => {
+    rebuildCatalog();
+    renderResults();
+  });
   search.addEventListener("input", () => renderResults(true));
   category.addEventListener("change", () => renderResults(true));
   document.querySelectorAll<HTMLButtonElement>("[data-category]").forEach((button) =>

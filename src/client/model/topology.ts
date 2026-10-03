@@ -5,6 +5,8 @@ import * as B from "@babylonjs/core";
 import type { StationNode } from "../types.ts";
 import { hash, TAU } from "./math.ts";
 
+const V = B.Vector3;
+
 // Station 24 explicitly has ten platform exits. Reusing that count for every modeled stairwell
 // bundle is still an inference, but it is a book-supported heuristic and is preferable to the
 // previous arbitrary nine-line grouping.

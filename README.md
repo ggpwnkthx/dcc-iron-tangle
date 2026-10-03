@@ -17,8 +17,8 @@ deno task dev
 
 Open **http://127.0.0.1:8000/**. Development mode first builds the browser app into the ignored
 `dist/` directory, then runs Deno's bundler in watch mode alongside the local server. TypeScript
-edits rebuild `dist/assets/app.js`; HTML and CSS edits under `src/site/` are mirrored into
-`dist/`. Server edits restart the listener. Refresh the browser after frontend changes. Use
+edits rebuild `dist/assets/app.js`; HTML and CSS edits under `src/site/` are mirrored into `dist/`.
+Server edits restart the listener. Refresh the browser after frontend changes. Use
 `deno task dev --port 8080` to change the port. Ctrl+C stops both development processes.
 
 For a release build and server:
@@ -86,7 +86,7 @@ Deno's cache. The browser uses only local assets and does not fetch packages at 
 | Command                 | Purpose                                                                 |
 | ----------------------- | ----------------------------------------------------------------------- |
 | `deno task dev`         | Initial build, watched browser rebuilds, and watched local server       |
-| `deno task build`       | Recreate `dist/`, copy site assets, and build the minified browser app |
+| `deno task build`       | Recreate `dist/`, copy site assets, and build the minified browser app  |
 | `deno task build:watch` | Watch and rebuild browser TypeScript with type checking                 |
 | `deno task start`       | Serve the existing browser build                                        |
 | `deno task fmt`         | Format all TypeScript, configuration, and documentation                 |
@@ -97,19 +97,20 @@ Deno's cache. The browser uses only local assets and does not fetch packages at 
 
 Strict mode, checked indexed access, and exact optional properties apply to the browser source as
 well as the server. The generated `dist/` tree is excluded from version control, formatting, and
-linting. `deno task test` builds it before running server tests, so tests work from a clean checkout.
+linting. `deno task test` builds it before running server tests, so tests work from a clean
+checkout.
 
 ### Permissions and serving
 
-The server uses `Deno.serve` and streams generated `dist/` assets. It supports GET, HEAD, MIME types, and
-ETag revalidation. Canonical path checks reject source/config files, directory listings, and
-escaping symlinks. Typed JSON errors handle rejected requests.
+The server uses `Deno.serve` and streams generated `dist/` assets. It supports GET, HEAD, MIME
+types, and ETag revalidation. Canonical path checks reject source/config files, directory listings,
+and escaping symlinks. Typed JSON errors handle rejected requests.
 
 The start task grants read access only to `dist/` and network access only to `127.0.0.1`.
 Development additionally grants read access to `src/site/`, write access to `dist/`, and subprocess
 access to `deno` so it can synchronize static assets, run the bundler, and start the server. Tests
-build the site first and then grant read access only to `dist/`. Dependency downloads are managed
-by Deno's CLI, separately from the application's runtime network permission.
+build the site first and then grant read access only to `dist/`. Dependency downloads are managed by
+Deno's CLI, separately from the application's runtime network permission.
 
 CLI host options are `127.0.0.1`, `localhost`, `::1`, and `0.0.0.0`; another host needs an explicit
 matching permission, for example:
@@ -300,24 +301,24 @@ iron-tangle/
 
 ## Files and editing
 
-| File                                       | Purpose                                                                           |
-| ------------------------------------------ | --------------------------------------------------------------------------------- |
-| `deno.json`, `deno.lock`                   | Deno tasks, pinned package mapping, strict compiler configuration, integrity lock |
-| `scripts/build.ts`, `scripts/site.ts`      | Reproducible `dist/` generation and static-site synchronization                  |
-| `scripts/dev.ts`                           | Build/watch/server orchestration and process cleanup                              |
-| `src/main.ts`, `src/server.ts`             | Typed streaming HTTP server                                                       |
-| `src/lib/`                                 | Server CLI validation, path containment, MIME types, HTTP errors                  |
-| `src/client/main.ts`                       | Explicit UI → scene → navigation initialization                                   |
-| `src/client/model.ts`                      | Typed Babylon geometry, routes, trains, camera, picking, animation                |
-| `src/client/interface.ts`                  | Responsive panels, keyboard access, themes, fullscreen, browser storage           |
-| `src/client/navigation.ts`                 | Catalog, search, filters, saved/recent selections, history, connections           |
-| `src/client/types.ts`                      | Shared domain objects, route/train types, scene metadata and targets              |
-| `src/client/objects.ts`                    | Stored JSON validation and stable object keys                                     |
-| `src/client/dom.ts`                        | Typed DOM lookup and required-value/context helpers                               |
-| `src/site/index.html`, `src/site/assets/*.css` | Page markup and styles                                                        |
-| `dist/`                                    | Generated site artifact; ignored by git and deployed by GitHub Actions            |
-| `tests/`                                   | Deno configuration, server, and object validation tests                           |
-| `licenses/`                                | Babylon license and notice                                                        |
+| File                                           | Purpose                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| `deno.json`, `deno.lock`                       | Deno tasks, pinned package mapping, strict compiler configuration, integrity lock |
+| `scripts/build.ts`, `scripts/site.ts`          | Reproducible `dist/` generation and static-site synchronization                   |
+| `scripts/dev.ts`                               | Build/watch/server orchestration and process cleanup                              |
+| `src/main.ts`, `src/server.ts`                 | Typed streaming HTTP server                                                       |
+| `src/lib/`                                     | Server CLI validation, path containment, MIME types, HTTP errors                  |
+| `src/client/main.ts`                           | Explicit UI → scene → navigation initialization                                   |
+| `src/client/model.ts`                          | Typed Babylon geometry, routes, trains, camera, picking, animation                |
+| `src/client/interface.ts`                      | Responsive panels, keyboard access, themes, fullscreen, browser storage           |
+| `src/client/navigation.ts`                     | Catalog, search, filters, saved/recent selections, history, connections           |
+| `src/client/types.ts`                          | Shared domain objects, route/train types, scene metadata and targets              |
+| `src/client/objects.ts`                        | Stored JSON validation and stable object keys                                     |
+| `src/client/dom.ts`                            | Typed DOM lookup and required-value/context helpers                               |
+| `src/site/index.html`, `src/site/assets/*.css` | Page markup and styles                                                            |
+| `dist/`                                        | Generated site artifact; ignored by git and deployed by GitHub Actions            |
+| `tests/`                                       | Deno configuration, server, and object validation tests                           |
+| `licenses/`                                    | Babylon license and notice                                                        |
 
 Geometry is generated in TypeScript; there are no missing mesh files or remote textures. The
 searchable catalog covers identified points and representative landmarks. Thousands of unnamed rail

@@ -20,8 +20,6 @@ export async function syncSite(options: { readonly clean?: boolean } = {}): Prom
 
   await Deno.mkdir(new URL("assets/", siteOutput), { recursive: true });
   await Promise.all(
-    siteFiles.map((path) =>
-      Deno.copyFile(new URL(path, siteSource), new URL(path, siteOutput))
-    ),
+    siteFiles.map((path) => Deno.copyFile(new URL(path, siteSource), new URL(path, siteOutput))),
   );
 }

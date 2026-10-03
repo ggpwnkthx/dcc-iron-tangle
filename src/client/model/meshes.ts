@@ -46,6 +46,7 @@ export function createMeshBuilders(scene: B.Scene) {
     mesh.material = m;
     mesh.parent = parent;
     return mesh;
+  }
 
   return { box, tube, torus };
 }

@@ -58,7 +58,7 @@ export function axisBase(i: number, t: number) {
   const bow = new V(-Math.sin(a) * 7, 6, Math.cos(a) * 7).scale(Math.sin(Math.PI * u));
   return V.Lerp(q, end, u).add(bow);
 }
-function nightmarePoint(t: number) {
+export function nightmarePoint(t: number) {
   // Two unequal circular lobes meet in top projection, with a grade-separated
   // second crossing. Preserve the recorded 83–283–436–283–83 stop sequence.
   const left = t <= .25 || t >= .75, index = left ? 0 : 1;

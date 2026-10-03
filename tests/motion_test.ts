@@ -34,3 +34,14 @@ Deno.test("wrap produces a positive loop position", () => {
   equal(wrap(0, 32), 0);
   throws(() => wrap(1, 0), "positive");
 });
+
+Deno.test("an old cleanup callback cannot remove a new owner of the same motion id", () => {
+  const motions = new MotionRegistry();
+  const oldCleanup = motions.register("train", () => {});
+  oldCleanup();
+  let updates = 0;
+  motions.register("train", () => updates++);
+  equal(oldCleanup(), false);
+  motions.update(1);
+  equal(updates, 1);
+});

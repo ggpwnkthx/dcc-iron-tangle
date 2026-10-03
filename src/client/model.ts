@@ -9,9 +9,16 @@ import {
 } from "./canon.ts";
 import { context2D, element, query, required, rootElement } from "./dom.ts";
 import { MotionRegistry, wrap } from "./motion.ts";
-import { objectRouteId } from "./objects.ts";
-import { RuntimeObjectRegistry } from "./runtime_objects.ts";
-import { CUTAWAY_MOTION, MIMIC_SPECS, trainMotion } from "./scene_specs.ts";
+import { canonicalRouteId, isObjectAvailable, objectRouteId, parseObject } from "./objects.ts";
+import { ResourceScope, type RuntimeObject, RuntimeObjectRegistry } from "./runtime_objects.ts";
+import {
+  CUTAWAY_MOTION,
+  LANDMARK_SPECS,
+  MIMIC_SPECS,
+  SERVICE_SPECS,
+  trainMotion,
+} from "./scene_specs.ts";
+import { createObjectRegistry, validateSceneDefinitions } from "./object_definitions.ts";
 import { createMeshBuilders } from "./model/meshes.ts";
 import { clamp, hash, lineSample, mix, stationT, TAU } from "./model/math.ts";
 import { createTheme } from "./model/theme.ts";
@@ -46,7 +53,9 @@ import type {
   Yard,
 } from "./types.ts";
 export function createModel(ui: UI) {
+  validateSceneDefinitions();
   const root = rootElement();
+  const lifecycle = new AbortController();
   const $ = element;
   const canvas = $("it-canvas"), overlay = $("it-labels"), ctx = context2D(overlay);
   const viewControl = $("it-view"), lineControl = $("it-line"), stationControl = $("it-station");
@@ -118,6 +127,7 @@ export function createModel(ui: UI) {
   let selected = "all",
     selectedStation: number | null = null,
     playing = false,
+    disposed = false,
     lastTime = performance.now(),
     currentView: View = "whole";
   let cameraTween: CameraTween | null = null,
@@ -130,16 +140,30 @@ export function createModel(ui: UI) {
     screenTargets: ScreenTarget[] = [],
     labelTargets: LabelTarget[] = [];
   const motions = new MotionRegistry();
+  const cutawayScope = new ResourceScope();
+  cutawayScope.own(cutaway);
   const runtimeObjects = new RuntimeObjectRegistry((change, object) => {
-    root.dispatchEvent(new CustomEvent("iron:objects-changed", { detail: { change, object } }));
+    if (!disposed) {
+      root.dispatchEvent(new CustomEvent("iron:objects-changed", { detail: { change, object } }));
+    }
   });
+  function ownObject(
+    object: IronObject,
+    resources: { dispose(): void }[],
+    cleanup: (() => void)[] = [],
+  ) {
+    const scope = new ResourceScope();
+    resources.forEach((resource) => scope.own(resource));
+    cleanup.forEach((dispose) => scope.defer(dispose));
+    return runtimeObjects.add({ object, discoverable: false, dispose: () => scope.dispose() });
+  }
   function requestRender() {
     needsRender = 3;
   }
   scene.skipPointerMovePicking = true;
   const {
     palette,
-    colorDefinitions,
+    lineSpecs,
     routeColor,
     darkTone,
     material,
@@ -184,17 +208,36 @@ export function createModel(ui: UI) {
     () => mix(palette.red, palette["muted-foreground"], .35),
     { emission: .18 },
   );
-  const nightmareMat = material("nightmare rails", () => palette.purple, { emission: .45 });
+  const serviceColor = (id: string, fallback: keyof typeof palette) =>
+    SERVICE_SPECS.find((spec) => spec.id === id)?.color ?? fallback;
+  const nightmareMat = material(
+    "nightmare rails",
+    () => palette[serviceColor("nightmare", "purple")],
+    { emission: .45 },
+  );
   const dismemberMat = material(
     "dismemberment rails",
-    () => mix(palette.foreground, palette.background, .08),
+    () => mix(palette[serviceColor("dismemberment", "foreground")], palette.background, .08),
     { emission: .35 },
   );
-  const evisceratorMat = material("eviscerator rails", () => palette.red, { emission: .4 });
-  const escapeMat = material("escape velocity", () => palette.green, { emission: .42 });
-  const homewardMat = material("homeward bound", () => palette.orange, { emission: .4 });
-  const railMaterials = colorDefinitions.map((d, i) =>
-    material(d[0] + " rail", () => routeColor(i), { emission: .42, metal: true })
+  const evisceratorMat = material(
+    "eviscerator rails",
+    () => palette[serviceColor("eviscerator", "red")],
+    { emission: .4 },
+  );
+  const escapeMat = material("escape velocity", () => palette[serviceColor("escape", "green")], {
+    emission: .42,
+  });
+  const homewardMat = material(
+    "homeward bound",
+    () => palette[serviceColor("homeward", "orange")],
+    { emission: .4 },
+  );
+  const railMaterials = new Map(
+    lineSpecs.map((d) => [
+      d.axisIndex,
+      material(d.name + " rail", () => routeColor(d.axisIndex), { emission: .42, metal: true }),
+    ]),
   );
   const glow = new B.GlowLayer("work lights", scene, { blurKernelSize: 16, mainTextureRatio: .25 });
   glow.intensity = .28;
@@ -223,8 +266,9 @@ export function createModel(ui: UI) {
       distancePoint: () => V.Zero(),
     };
   }
-  const knownRoutes: Route[] = colorDefinitions.map((d, i) => {
-    const namedNodes = Object.values(nodes).filter((n) => n.lines.includes(d[0])),
+  const knownRoutes: Route[] = lineSpecs.map((d) => {
+    const i = d.axisIndex;
+    const namedNodes = Object.values(nodes).filter((n) => n.lines.includes(d.id)),
       spec = yardSpecs[Math.floor(i / modeledHubPlatformCount) % yardSpecs.length];
     const anchors: Anchor[] = [10, 12, 24, 36, 48, 60, 72, 180, 340, 410, 433, 435, 436].filter((
       n,
@@ -302,15 +346,15 @@ export function createModel(ui: UI) {
         (t - required(a).t) / (required(b).t - required(a).t || 1),
       );
     };
-    const id = "color-" + i;
+    const id = d.id;
     const option = document.createElement("option");
     option.value = id;
-    option.textContent = d[0];
+    option.textContent = d.name;
     $("it-colors").appendChild(option);
     return {
       ...routeDefaults(),
       id,
-      name: d[0],
+      name: d.name,
       i,
       point,
       namedNodes,
@@ -320,6 +364,7 @@ export function createModel(ui: UI) {
       arcs,
     };
   });
+  const knownByAxis = new Map(knownRoutes.map((r) => [r.i, r]));
   const ringGuides = B.MeshBuilder.CreateLineSystem("Syndicate ring guides", {
     lines: logoRings.map((_, i) => lineSample((t) => ringPoint(i, t * TAU), 160)),
   }, scene);
@@ -329,8 +374,8 @@ export function createModel(ui: UI) {
   ringGuides.isPickable = false;
   ringGuides.setEnabled(false);
   function axis(i: number, t: number) {
-    if (i < knownRoutes.length) {
-      return required(knownRoutes[i]).point(t).subtract(new V(0, 1.15, 0));
+    if (knownByAxis.has(i)) {
+      return required(knownByAxis.get(i)).point(t).subtract(new V(0, 1.15, 0));
     }
     let p = axisBase(i, t);
     for (const n of PRIMARY_STAIRWELL_STATIONS) {
@@ -354,7 +399,7 @@ export function createModel(ui: UI) {
     ].sort((a, b) => a - b);
     const rings = sampleTs.length - 1, facets = 3, sign = face === "upper" ? 1 : -1;
     for (let i = 0; i < 3123; i++) {
-      if (i < knownRoutes.length) continue;
+      if (knownByAxis.has(i)) continue;
       const start = positions.length / 3;
       for (let j = 0; j <= rings; j++) {
         const t = required(sampleTs[j]), p = axis(i, t).add(new V(0, sign * 1.15, 0));
@@ -409,8 +454,8 @@ export function createModel(ui: UI) {
   const hiddenPaths = Array.from(
     { length: 3123 },
     (_, i) =>
-      i < knownRoutes.length
-        ? required(knownRoutes[i]).path.map((p) => p.subtract(new V(0, 1.15, 0)))
+      knownByAxis.has(i)
+        ? required(knownByAxis.get(i)).path.map((p) => p.subtract(new V(0, 1.15, 0)))
         : lineSample((t) => axis(i, t), 50),
   );
   const hiddenLines = B.MeshBuilder.CreateLineSystem("3123 concealed passages", {
@@ -423,7 +468,7 @@ export function createModel(ui: UI) {
   middle.setEnabled(false);
   knownRoutes.forEach((r) => {
     const path = r.path;
-    const mesh = tube(r.name + " subway", path, .42, required(railMaterials[r.i]), upper, 8);
+    const mesh = tube(r.name + " subway", path, .42, required(railMaterials.get(r.i)), upper, 8);
     mesh.metadata = { route: r.id };
     r.mesh = mesh;
     routeMeshes.push(mesh);
@@ -447,6 +492,7 @@ export function createModel(ui: UI) {
     );
     opposing.metadata = { route: r.id, counterpart: true };
     r.opposing = opposing;
+    ownObject({ kind: "route", id: r.id }, [mesh, hidden, opposing]);
   });
   function instancedMarkers(
     name: string,
@@ -656,6 +702,10 @@ export function createModel(ui: UI) {
       required(merged).metadata = { yard: i, face: sign };
       const y = { id: i, sign, base, parent, yard, merged: required(merged) };
       yards.push(y);
+      ownObject({ kind: "yard", id: i, face: sign }, [yard, required(merged)], [() => {
+        const index = yards.indexOf(y);
+        if (index !== -1) yards.splice(index, 1);
+      }]);
       if (sign === 1 && i === 3) {
         labels.push({
           text: "Trainyard " + spec.label,
@@ -668,6 +718,10 @@ export function createModel(ui: UI) {
       yard.getChildMeshes().forEach((m) => m.metadata = { yard: i, face: sign });
     }
   }
+  const portalsRoot = new B.TransformNode("engine-return portals", scene);
+  portalsRoot.parent = abyssRoot;
+  const wreckageRoot = new B.TransformNode("discarded carriages", scene);
+  wreckageRoot.parent = abyssRoot;
   torus("Abyss rim", new V(0, 29, 0), 43, 1.9, abyssMat, abyssRoot);
   torus("opposite Abyss rim", new V(0, -29, 0), 43, 1.9, abyssMat, abyssRoot);
   for (const sign of [1, -1]) {
@@ -696,7 +750,7 @@ export function createModel(ui: UI) {
         1.8,
         .2,
         homewardMat,
-        abyssRoot,
+        portalsRoot,
       );
       portal.rotation.z = Math.PI / 2;
       portal.rotation.y = -a;
@@ -708,12 +762,21 @@ export function createModel(ui: UI) {
     const a = hash(i + 913) * TAU,
       r = hash(i + 217) * 13,
       car = required(subwayCar).createInstance("discarded carriage");
-    car.parent = abyssRoot;
+    car.parent = wreckageRoot;
     car.position = new V(Math.cos(a) * r, -36 + hash(i + 38) * 8, Math.sin(a) * r);
     car.rotation = new V(hash(i + 31) * Math.PI, hash(i + 3) * TAU, hash(i + 414) * Math.PI);
     car.scaling.setAll(1.5);
     car.isPickable = false;
   }
+  ownObject({ kind: "landmark", id: "portals" }, [portalsRoot]);
+  ownObject({ kind: "landmark", id: "wreckage" }, [wreckageRoot]);
+  ownObject({ kind: "landmark", id: "abyss" }, [{
+    dispose() {
+      abyssRoot.getChildMeshes(true).forEach((mesh) => mesh.dispose());
+      abyssRoot.dispose(true);
+    },
+  }]);
+  ownObject({ kind: "landmark", id: "logo" }, [ringGuides]);
   for (const spec of MIMIC_SPECS) {
     const sign = spec.face,
       parent = sign === 1 ? upper : lower,
@@ -745,6 +808,10 @@ export function createModel(ui: UI) {
     }
     boss.getChildMeshes().forEach((m) => m.metadata = { mimic: spec.id, station: spec.station });
     bosses.push(boss);
+    ownObject({ kind: "mimic", id: spec.id }, [boss], [() => {
+      const index = bosses.indexOf(boss);
+      if (index !== -1) bosses.splice(index, 1);
+    }]);
   }
   Object.entries(nodes).forEach(([id, n]) => {
     const platform = new B.TransformNode(id + " platform", scene);
@@ -769,7 +836,7 @@ export function createModel(ui: UI) {
     beacon.position.y = 2.2;
     beacon.material = n.n === 436 || n.n === 60
       ? homewardMat
-      : required(railMaterials[colorDefinitions.findIndex((c) => c[0] === n.lines[0])]);
+      : required(railMaterials.get(required(lineSpecs.find((c) => c.id === n.lines[0])).axisIndex));
     beacon.parent = platform;
     beacon.metadata = { node: id };
     platform.metadata = { node: id };
@@ -796,6 +863,10 @@ export function createModel(ui: UI) {
       }
     }
     stationMeshes.push(platform);
+    ownObject({ kind: "node", id }, [platform], [() => {
+      const index = stationMeshes.indexOf(platform);
+      if (index !== -1) stationMeshes.splice(index, 1);
+    }]);
     labels.push({
       text: n.label,
       point: n.p.add(new V(0, 3, 0)),
@@ -805,172 +876,163 @@ export function createModel(ui: UI) {
       kind: "station",
     });
   });
-  const namedRoutes: Record<string, Route> = {
-    nightmare: {
-      ...routeDefaults(),
-      id: "nightmare",
-      name: "Nightmare Express",
-      point: nightmarePoint,
-      material: nightmareMat,
-      loop: true,
-      count: 40,
-      spacing: 2.0,
-      prototype: required(nightmareCar),
-      stops: [["83 · Red / Yellow", 0], ["283 · Purple / Mauve", .125], ["436 · Abyss", .25], [
-        "283 · Green / Yellow",
-        .375,
-      ], ["83 · Tangerine / Plum", .5]],
-    },
-    dismemberment: {
-      ...routeDefaults(),
-      id: "dismemberment",
-      name: "Dismemberment Limited",
-      material: dismemberMat,
-      loop: true,
-      count: 2,
-      spacing: 3,
-      prototype: required(whiteCar),
-      stops: [["149 · Ochre", 0], ["281 · Mauve", .5]],
-      point: (t) => ringPoint(2, t * TAU),
-    },
-    eviscerator: {
-      ...routeDefaults(),
-      id: "eviscerator",
-      name: "Eviscerator",
-      material: evisceratorMat,
-      loop: true,
-      count: 12,
-      spacing: 1.9,
-      prototype: required(nightmareCar),
-      stops: [["271 · Cobalt", 0]],
-      point: (t) => ringPoint(3, t * TAU),
-    },
-    escape: {
-      ...routeDefaults(),
-      id: "escape",
-      name: "Escape Velocity",
-      material: escapeMat,
-      loop: false,
-      reverse: true,
-      count: 12,
-      spacing: 1.9,
-      prototype: required(subwayCar),
-      stops: [["89 · Tangerine", 1], ["24 · Escape Velocity III / stairwell hub", 0]],
-      point: (t) => {
-        const start = required(knownRoutes[9]).point(stationT(24)),
-          r = logoRings[1],
-          a = Math.atan2(start.z - required(r).z, start.x - required(r).x);
-        return ringPoint(1, a + (.35 - a) * t).add(start.subtract(ringPoint(1, a)).scale(1 - t))
-          .add(new V(0, Math.sin(t * Math.PI) * 8, 0));
-      },
-    },
-    homeward: {
-      ...routeDefaults(),
-      id: "homeward",
-      name: "Homeward Bound",
-      material: homewardMat,
-      loop: false,
-      count: 10,
-      spacing: 1.9,
-      prototype: required(subwayCar),
-      stops: [["Trainyard E", 0], ["24 · staff access", .4], [
-        `60 · ${HOMEWARD_BOUND_PLATFORM_COUNT} Homeward Bound platforms`,
-        1,
-      ]],
-      point: (t) => {
-        return ringPoint(3, Math.PI / 2 - (Math.PI / 2 + Math.PI / 3) * t).add(
-          new V(0, 1.15 * (1 - t) + 6 * Math.sin(t * Math.PI), 0),
-        );
-      },
-    },
+  const serviceMaterials: Record<string, B.StandardMaterial> = {
+    nightmare: nightmareMat,
+    dismemberment: dismemberMat,
+    eviscerator: evisceratorMat,
+    escape: escapeMat,
+    homeward: homewardMat,
   };
-  function registerTrain(r: Route, makeTrack = false) {
-    if (makeTrack) {
-      r.mesh = tube(
-        r.name + " route",
-        lineSample(r.point, 260, r.stops.map((s) => s[1])),
-        r.id === "nightmare" ? .64 : .38,
-        r.material,
-        upper,
-        10,
-      );
-      r.mesh.metadata = { route: r.id };
-      routeMeshes.push(r.mesh);
-    }
-    const samples = r.path.length ? r.path : lineSample(r.point, 500, r.stops.map((s) => s[1])),
-      cumulative = [0];
-    r.length = 0;
-    for (let i = 1; i < samples.length; i++) {
-      r.length += V.Distance(required(samples[i - 1]), required(samples[i]));
-      cumulative.push(r.length);
-    }
-    r.distancePoint = (d) => {
-      const distance = r.loop ? ((d % r.length) + r.length) % r.length : clamp(d, 0, r.length);
-      let lo = 0, hi = samples.length - 1;
-      while (lo + 1 < hi) {
-        const mid = (lo + hi) >> 1;
-        if (required(cumulative[mid]) < distance) lo = mid;
-        else hi = mid;
-      }
-      return V.Lerp(
-        required(samples[lo]),
-        required(samples[hi]),
-        (distance - required(cumulative[lo])) /
-          (required(cumulative[hi]) - required(cumulative[lo]) || 1),
-      );
-    };
-    const cars = [];
-    for (let i = 0; i < r.count; i++) {
-      const prototype = r.id === "nightmare"
-        ? (i === 0 ? locomotive : i === 1 || i === r.count - 1 ? blackPassenger : r.prototype)
-        : r.prototype;
-      const car = required(prototype).createInstance(r.name + " carriage " + (i + 1));
-      car.parent = r.parent || upper;
-      car.metadata = { route: r.id, train: true };
-      cars.push(car);
-    }
-    const motion = trainMotion(r.id);
-    const train = { r, cars, base: r.length * motion.startFraction, speed: motion.speed };
-    trains.push(train);
-    motions.register("train:" + r.id, ({ elapsed }) => poseTrain(train, elapsed));
-    // New inferred routes can be created after animation has already run.
-    // Pose immediately at the shared clock instead of flashing at the origin.
-    poseTrain(train, motions.elapsed);
-    return () => {
-      motions.remove("train:" + r.id);
-      const index = trains.findIndex((candidate) => candidate === train);
-      if (index !== -1) {
-        train.cars.forEach((car) => car.dispose());
-        trains.splice(index, 1);
+  const prototypes = {
+    nightmare: required(nightmareCar),
+    white: required(whiteCar),
+    subway: required(subwayCar),
+  };
+  const namedRoutes: Record<string, Route> = Object.fromEntries(SERVICE_SPECS.map((spec) => {
+    const path = spec.path;
+    const point = (t: number): B.Vector3 => {
+      switch (path.kind) {
+        case "nightmare":
+          return nightmarePoint(t);
+        case "ring":
+          return ringPoint(path.ring, t * TAU);
+        case "access": {
+          const start = required(knownRoutes.find((r) => r.id === path.line)).point(
+            stationT(path.station),
+          );
+          const ring = required(logoRings[path.ring]);
+          const angle = Math.atan2(start.z - ring.z, start.x - ring.x);
+          return ringPoint(path.ring, angle + (path.endAngle - angle) * t)
+            .add(start.subtract(ringPoint(path.ring, angle)).scale(1 - t))
+            .add(new V(0, Math.sin(t * Math.PI) * path.lift, 0));
+        }
+        case "homeward":
+          return ringPoint(path.ring, path.startAngle + (path.endAngle - path.startAngle) * t)
+            .add(new V(0, 1.15 * (1 - t) + path.lift * Math.sin(t * Math.PI), 0));
       }
     };
+    return [spec.id, {
+      ...routeDefaults(),
+      id: spec.id,
+      name: spec.name,
+      point,
+      material: serviceMaterials[spec.id] ??
+        material(spec.name + " rails", () => palette[spec.color], { emission: .4 }),
+      loop: spec.loop,
+      reverse: spec.reverse ?? false,
+      count: spec.count,
+      spacing: spec.spacing,
+      prototype: prototypes[spec.prototype],
+      stops: spec.stops.map((stop): [string, number] => [stop.label, stop.t]),
+    }];
+  }));
+  function prepareTrain(r: Route, object: IronObject = { kind: "train", id: r.id }): RuntimeObject {
+    const scope = new ResourceScope();
+    try {
+      const samples = r.path.length ? r.path : lineSample(r.point, 500, r.stops.map((s) => s[1])),
+        cumulative = [0];
+      r.length = 0;
+      for (let i = 1; i < samples.length; i++) {
+        r.length += V.Distance(required(samples[i - 1]), required(samples[i]));
+        cumulative.push(r.length);
+      }
+      r.distancePoint = (d) => {
+        const distance = r.loop ? ((d % r.length) + r.length) % r.length : clamp(d, 0, r.length);
+        let lo = 0, hi = samples.length - 1;
+        while (lo + 1 < hi) {
+          const mid = (lo + hi) >> 1;
+          if (required(cumulative[mid]) < distance) lo = mid;
+          else hi = mid;
+        }
+        return V.Lerp(
+          required(samples[lo]),
+          required(samples[hi]),
+          (distance - required(cumulative[lo])) /
+            (required(cumulative[hi]) - required(cumulative[lo]) || 1),
+        );
+      };
+      const cars = [];
+      for (let i = 0; i < r.count; i++) {
+        const prototype = r.id === "nightmare"
+          ? (i === 0 ? locomotive : i === 1 || i === r.count - 1 ? blackPassenger : r.prototype)
+          : r.prototype;
+        const car = scope.own(required(prototype).createInstance(r.name + " carriage " + (i + 1)));
+        car.parent = r.parent || upper;
+        car.metadata = { route: r.id, train: true };
+        cars.push(car);
+      }
+      const motion = trainMotion(r.id);
+      const train = { r, cars, base: r.length * motion.startFraction, speed: motion.speed };
+      let active = false;
+      return {
+        object,
+        discoverable: false,
+        activate() {
+          if (active) return;
+          scope.defer(
+            motions.register("train:" + r.id, ({ elapsed }) => poseTrain(train, elapsed)),
+          );
+          trains.push(train);
+          scope.defer(() => {
+            const index = trains.indexOf(train);
+            if (index !== -1) trains.splice(index, 1);
+          });
+          poseTrain(train, motions.elapsed);
+          active = true;
+        },
+        dispose: () => scope.dispose(),
+      };
+    } catch (error) {
+      scope.dispose();
+      throw error;
+    }
   }
-  Object.values(namedRoutes).forEach((r) => registerTrain(r, true));
-  ["escape", "homeward"].forEach((id) => {
-    const r = namedRoutes[id];
-    required(r).stops.forEach(([text, t]) =>
-      labels.push({
-        text,
-        point: required(r).point(t).add(new V(0, 3, 0)),
-        parent: upper,
-        priority: 3,
-        kind: "service",
-        route: id,
-        t,
-      })
+  function registerTrain(r: Route) {
+    return runtimeObjects.add(prepareTrain(r));
+  }
+  Object.values(namedRoutes).forEach((r) => {
+    r.mesh = tube(
+      r.name + " route",
+      lineSample(r.point, 260, r.stops.map((stop) => stop[1])),
+      r.id === "nightmare" ? .64 : .38,
+      r.material,
+      upper,
+      10,
     );
-    const t = id === "escape" ? 0 : .4,
-      platform = box(
-        id + " low station",
+    r.mesh.metadata = { route: r.id };
+    routeMeshes.push(r.mesh);
+    ownObject({ kind: "route", id: r.id }, [r.mesh]);
+    registerTrain(r);
+  });
+  SERVICE_SPECS.forEach((spec) => {
+    const r = required(namedRoutes[spec.id]);
+    if (spec.showStopLabels) {
+      spec.stops.forEach(({ label: text, t }) =>
+        labels.push({
+          text,
+          point: r.point(t).add(new V(0, 3, 0)),
+          parent: upper,
+          priority: 3,
+          kind: "service",
+          route: spec.id,
+          t,
+        })
+      );
+    }
+    r.lowPlatforms = spec.stops.filter((stop) => stop.platform).map(({ t, label }) => {
+      const platform = box(
+        spec.id + " low station",
         5,
         .3,
         3,
-        required(r).point(t).subtract(new V(0, .3, 0)),
+        r.point(t).subtract(new V(0, .3, 0)),
         steel,
         upper,
       );
-    platform.metadata = { route: id, stop: true, t };
-    required(r).lowPlatform = platform;
+      platform.metadata = { route: spec.id, stop: true, t };
+      ownObject({ kind: "stop", route: spec.id, t, label }, [platform]);
+      return { mesh: platform, t, label };
+    });
   });
   knownRoutes.forEach((r) => {
     r.count = 12;
@@ -980,10 +1042,7 @@ export function createModel(ui: UI) {
     registerTrain(r);
   });
   // Logo view uses the real named-route meshes, never a decorative emblem overlay.
-  ([["nightmare", .86], ["dismemberment", .75], ["eviscerator", .25], ["escape", .6], [
-    "homeward",
-    .28,
-  ]] as [string, number][]).forEach(([id, t]) => {
+  SERVICE_SPECS.forEach(({ id, labelT: t }) => {
     const r = namedRoutes[id];
     labels.push({
       text: required(r).name,
@@ -1023,7 +1082,7 @@ export function createModel(ui: UI) {
         .16,
         .13,
         new V(0, sign * 2.9, z),
-        required(railMaterials[sign === 1 ? 0 : 8]),
+        required(railMaterials.get(sign === 1 ? 0 : 8)),
         cutaway,
       );
     }
@@ -1037,12 +1096,12 @@ export function createModel(ui: UI) {
       car.parent = cutaway;
       car.position = new V(startX, sign * 2.88, sign === 1 ? -2 : 2);
       if (sign === 1) car.rotation.z = Math.PI;
-      motions.register(`cutaway:car:${sign}:${i}`, ({ elapsed }) => {
+      cutawayScope.defer(motions.register(`cutaway:car:${sign}:${i}`, ({ elapsed }) => {
         car.position.x = wrap(
           startX + cutawayCars.span / 2 + elapsed * sign * cutawayCars.speed,
           cutawayCars.span,
         ) - cutawayCars.span / 2;
-      });
+      }));
     });
     box("hidden wall", 33, .22, 6.2, new V(0, sign * 1.0, 0), darkSteel, cutaway);
     box("station passage", 3, .25, 3.4, new V(11, sign * 3.2, 3.7), steel, cutaway);
@@ -1089,11 +1148,16 @@ export function createModel(ui: UI) {
   worker.parent = cutaway;
   const cargoMotion = CUTAWAY_MOTION.cargo;
   worker.position = new V(cargoMotion.startX, .15, 0);
-  motions.register("cutaway:cargo", ({ elapsed }) => {
+  cutawayScope.defer(motions.register("cutaway:cargo", ({ elapsed }) => {
     worker.position.x = wrap(
       cargoMotion.startX + cargoMotion.span / 2 + elapsed * cargoMotion.speed,
       cargoMotion.span,
     ) - cargoMotion.span / 2;
+  }));
+  runtimeObjects.add({
+    object: { kind: "landmark", id: "cutaway" },
+    discoverable: false,
+    dispose: () => cutawayScope.dispose(),
   });
   const markerMaterial = material("selection beacon", () => palette.yellow, { emission: .75 });
   const selectedMarker = torus("selected station", new V(0, 0, 0), 5, .24, markerMaterial, upper);
@@ -1108,7 +1172,7 @@ export function createModel(ui: UI) {
   function updateNumberedStations(r: Route | null) {
     selectedStationMeshes.forEach((m) => m.dispose());
     selectedStationMeshes = [];
-    if (!r || (!r.id.startsWith("color-") && !r.id.startsWith("unmapped-"))) return;
+    if (!r || (!r.id.startsWith("line:") && !r.id.startsWith("unmapped-"))) return;
     const parent = r.parent || upper;
     const points = [];
     for (let n = 10; n <= 436; n++) points.push(r.point(stationT(n)));
@@ -1138,7 +1202,7 @@ export function createModel(ui: UI) {
       (inferredRoute?.id === selected ? inferredRoute : null);
   }
   function numberedLine() {
-    return selected.startsWith("color-") || selected.startsWith("unmapped-");
+    return selected.startsWith("line:") || selected.startsWith("unmapped-");
   }
   function stateDetail() {
     if (currentView === "logo") {
@@ -1279,7 +1343,7 @@ export function createModel(ui: UI) {
     const centre = V.Center(min, max).add(
       new V(0, (r.face || 1) * Number(splitControl.value) / 2, 0),
     );
-    const ringRoute = r.id.startsWith("color-") || r.id.startsWith("unmapped-");
+    const ringRoute = r.id.startsWith("line:") || r.id.startsWith("unmapped-");
     setCamera(
       centre,
       Math.max(38, V.Distance(min, max) * 1.05),
@@ -1336,9 +1400,11 @@ export function createModel(ui: UI) {
       showBulk || logo || localAbyss ||
         currentView === "known" && ["all", "nightmare"].includes(selected),
     );
-    ["escape", "homeward"].forEach((id) =>
-      required(required(namedRoutes[id]).lowPlatform).setEnabled(
-        !section && (logo || selected === id || showBulk || localYard && id === "homeward"),
+    Object.values(namedRoutes).forEach((r) =>
+      r.lowPlatforms?.forEach(({ mesh }) =>
+        mesh.setEnabled(
+          !section && (logo || selected === r.id || showBulk || localYard && r.id === "homeward"),
+        )
       )
     );
     stationMeshes.forEach((p) => {
@@ -1406,20 +1472,13 @@ export function createModel(ui: UI) {
     trains.forEach((t) => poseTrain(t, motions.elapsed));
     requestRender();
   }
-  function chooseLine(value: string, focus = true, notify = true) {
-    if (value === "all") {
-      showOverview(focus, notify);
-      return;
-    }
-    if (value.startsWith("unmapped-") && inferredRoute?.id !== value) {
-      if (inferredRoute) {
-        runtimeObjects.remove({ kind: "route", id: inferredRoute.id });
-        inferredRoute = null;
-      }
+  function prepareInferredRoute(value: string) {
+    const scope = new ResourceScope();
+    try {
       const match = value.match(/^unmapped-(\d+)-(-?1)$/);
-      if (!match) return;
+      if (!match || Number(match[1]) >= 3123) throw new TypeError("Invalid unmapped route");
       const i = Number(match[1]), face: 1 | -1 = Number(match[2]) === 1 ? 1 : -1;
-      inferredRoute = {
+      const route: Route = {
         ...routeDefaults(),
         id: value,
         name: "Unmapped line " + (i * 2 + (face === 1 ? 1 : 2)),
@@ -1429,53 +1488,76 @@ export function createModel(ui: UI) {
         namedNodes: [],
         point: (t) => axis(i, t).add(new V(0, face * 1.15, 0)),
       };
-      inferredRoute.mesh = tube(
+      route.mesh = scope.own(tube(
         "selected inferred line",
-        lineSample(inferredRoute.point, 220),
+        lineSample(route.point, 220),
         .63,
         markerMaterial,
-        inferredRoute.parent,
+        route.parent,
         8,
-      );
-      inferredRoute.mesh.metadata = { route: value };
-      inferredRoute.counterpart = tube(
+      ));
+      route.mesh.metadata = { route: value };
+      route.counterpart = scope.own(tube(
         "selected inferred counterpart",
         lineSample((t) => axis(i, t).add(new V(0, -face * 1.15, 0)), 220),
         .35,
         oppositeMat,
         face === 1 ? lower : upper,
         6,
-      );
-      inferredRoute.hidden = tube(
+      ));
+      route.hidden = scope.own(tube(
         "selected inferred hidden passage",
         lineSample((t) => axis(i, t), 220),
         .13,
         hiddenMat,
         middle,
         5,
-      );
-      inferredRoute.hidden.isPickable = false;
-      inferredRoute.count = 12;
-      inferredRoute.spacing = 1.9;
-      inferredRoute.prototype = required(subwayCar);
-      inferredRoute.loop = false;
-      const disposeTrain = registerTrain(inferredRoute);
-      const runtimeRoute = inferredRoute;
-      runtimeObjects.add({
-        object: { kind: "route", id: runtimeRoute.id },
-        dispose() {
-          disposeTrain();
-          required(runtimeRoute.mesh).dispose();
-          required(runtimeRoute.counterpart).dispose();
-          required(runtimeRoute.hidden).dispose();
+      ));
+      route.hidden.isPickable = false;
+      route.count = 12;
+      route.spacing = 1.9;
+      route.prototype = required(subwayCar);
+      route.loop = false;
+      const train = scope.own(prepareTrain(route));
+      const runtime: RuntimeObject = {
+        object: { kind: "route", id: value },
+        activate() {
+          train.activate?.();
+          inferredRoute = route;
         },
-      });
-      const old = $("it-unmapped");
-      if (old) old.remove();
+        dispose: () => scope.dispose(),
+      };
+      return { route, runtime };
+    } catch (error) {
+      scope.dispose();
+      throw error;
+    }
+  }
+  function rebuildInferredRoute() {
+    if (!inferredRoute) return false;
+    const id = inferredRoute.id;
+    runtimeObjects.replace({ kind: "route", id }, () => prepareInferredRoute(id).runtime);
+    updateNumberedStations(selectedRoute());
+    applyView(false);
+    if (activeObject) focusSelection();
+    return true;
+  }
+  function chooseLine(value: string, focus = true, notify = true) {
+    value = canonicalRouteId(value);
+    if (value === "all") {
+      showOverview(focus, notify);
+      return;
+    }
+    if (!parseObject({ kind: "route", id: value }, createObjectRegistry())) return;
+    if (value.startsWith("unmapped-") && inferredRoute?.id !== value) {
+      const next = prepareInferredRoute(value);
+      if (inferredRoute) runtimeObjects.remove({ kind: "route", id: inferredRoute.id });
+      runtimeObjects.add(next.runtime);
+      document.getElementById("it-unmapped")?.remove();
       const option = document.createElement("option");
       option.id = "it-unmapped";
       option.value = value;
-      option.textContent = inferredRoute.name + " (inferred)";
+      option.textContent = next.route.name + " (inferred)";
       lineControl.appendChild(option);
     }
     if (inferredRoute) {
@@ -1539,13 +1621,7 @@ export function createModel(ui: UI) {
     }
     if (o.kind === "mimic") return "Station Mimic " + o.id;
     if (o.kind === "landmark") {
-      return {
-        logo: "Syndicate logo view",
-        abyss: "The Abyss",
-        wreckage: "Discarded carriages",
-        portals: "Engine-return portals",
-        cutaway: "Paired tunnel cutaway",
-      }[o.id];
+      return required(LANDMARK_SPECS.find((spec) => spec.id === o.id)).title;
     }
     const routeId = objectRouteId(o);
     const r = routeId
@@ -1663,6 +1739,10 @@ export function createModel(ui: UI) {
     setCamera(world, location.radius, location.alpha ?? -1.1, location.beta ?? 1.05);
   }
   function selectObject(o: IronObject | null, focus = true, notify = true) {
+    if (o && o.kind !== "overview") {
+      o = parseObject(o, createObjectRegistry());
+      if (!o) return;
+    }
     if (!o || o.kind === "overview") {
       showOverview(focus, notify, o?.kind === "overview" ? o.view : "whole");
       return;
@@ -1680,7 +1760,7 @@ export function createModel(ui: UI) {
       const n = nodes[o.id];
       if (!n) return;
       const route = n.lines.length
-        ? required(knownRoutes.find((r) => r.name === n.lines[0])).id
+        ? required(knownRoutes.find((r) => r.id === n.lines[0])).id
         : o.id === "employee60"
         ? "homeward"
         : "nightmare";
@@ -1814,21 +1894,15 @@ export function createModel(ui: UI) {
         parent: upper,
       })
     );
-    ["escape", "homeward"].filter((id) =>
-      required(required(namedRoutes[id]).lowPlatform).isEnabled()
-    ).forEach((id) => {
-      const t = id === "escape" ? 0 : .4;
-      targets.push({
-        object: {
-          kind: "stop",
-          route: id,
-          t,
-          label: id === "escape" ? "24 · stairwell" : "24 · staff access",
-        },
-        point: required(namedRoutes[id]).point(t),
-        parent: upper,
-      });
-    });
+    Object.values(namedRoutes).forEach((r) =>
+      r.lowPlatforms?.filter(({ mesh }) => mesh.isEnabled()).forEach(({ t, label }) => {
+        targets.push({
+          object: { kind: "stop", route: r.id, t, label },
+          point: r.point(t),
+          parent: upper,
+        });
+      })
+    );
     if (abyssRoot.isEnabled()) {
       targets.push({
         object: { kind: "landmark", id: "abyss" },
@@ -1915,13 +1989,19 @@ export function createModel(ui: UI) {
     attributes: true,
     attributeFilter: ["class", "style", "data-theme"],
   });
-  globalThis.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateTheme);
-  viewControl.addEventListener("change", () => setView(viewControl.value));
-  lineControl.addEventListener("change", () => chooseLine(lineControl.value));
+  globalThis.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateTheme, {
+    signal: lifecycle.signal,
+  });
+  viewControl.addEventListener("change", () => setView(viewControl.value), {
+    signal: lifecycle.signal,
+  });
+  lineControl.addEventListener("change", () => chooseLine(lineControl.value), {
+    signal: lifecycle.signal,
+  });
   $("it-station-form").addEventListener("submit", (event) => {
     event.preventDefault();
     inspectStation(Number(stationControl.value));
-  });
+  }, { signal: lifecycle.signal });
   splitControl.addEventListener("input", () => {
     const value = Number(splitControl.value);
     $("it-split-value").textContent = String(value);
@@ -1931,12 +2011,12 @@ export function createModel(ui: UI) {
     detail.textContent = stateDetail();
     if (activeObject) focusSelection();
     requestRender();
-  });
+  }, { signal: lifecycle.signal });
   playControl.addEventListener("click", () => {
     playing = !playing;
     playControl.textContent = playing ? "Pause trains" : "Run trains";
     playControl.setAttribute("aria-pressed", String(playing));
-  });
+  }, { signal: lifecycle.signal });
   scene.onPointerObservable.add((info) => {
     if (info.type === B.PointerEventTypes.POINTERDOWN) {
       cameraTween = null;
@@ -1981,12 +2061,12 @@ export function createModel(ui: UI) {
       canvas.classList.toggle("cursor-interaction", !!object);
       requestRender();
     }
-  });
+  }, { signal: lifecycle.signal });
   canvas.addEventListener("pointerleave", () => {
     hoveredObject = null;
     canvas.classList.remove("cursor-interaction");
     requestRender();
-  });
+  }, { signal: lifecycle.signal });
   let previousAspectScale = 1,
     sceneRect = { x: 0, y: 0, width: canvas.clientWidth, height: canvas.clientHeight };
   function resize() {
@@ -2040,7 +2120,7 @@ export function createModel(ui: UI) {
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(root);
   resize();
-  root.addEventListener("iron:layout", resize);
+  root.addEventListener("iron:layout", resize, { signal: lifecycle.signal });
   function drawLabels() {
     const w = overlay.clientWidth, h = overlay.clientHeight;
     ctx.clearRect(0, 0, w, h);
@@ -2196,9 +2276,28 @@ export function createModel(ui: UI) {
   camera.alpha = -1.48;
   camera.beta = .66;
   requestRender();
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    lifecycle.abort();
+    resizeObserver.disconnect();
+    themeObserver.disconnect();
+    try {
+      runtimeObjects.dispose();
+    } finally {
+      try {
+        scene.dispose();
+      } finally {
+        engine.dispose();
+      }
+    }
+  };
   const model = {
     engine,
     scene,
+    dispose,
+    lifecycleSignal: lifecycle.signal,
+    isObjectAvailable: (object: IronObject) => isObjectAvailable(object, createObjectRegistry()),
     camera,
     knownRoutes,
     namedRoutes,
@@ -2207,6 +2306,7 @@ export function createModel(ui: UI) {
     lower,
     cutaway,
     chooseLine,
+    rebuildInferredRoute,
     inspectStation,
     selectObject,
     focusSelection,
@@ -2225,15 +2325,19 @@ export function createModel(ui: UI) {
       modeledYardDecks: yards.length,
       stairChambers: 3470,
       stationMimics: bosses.length,
-      documentedColors: 23,
-      nightmareCars: 40,
+      documentedColors: lineSpecs.length,
+      nightmareCars: namedRoutes.nightmare?.count ?? 0,
     },
     get palette() {
       return palette;
     },
     routeColor,
+    get lifecycleStats() {
+      return { objects: runtimeObjects.size, motions: motions.size };
+    },
     get runtimeObjects() {
-      return Array.from(runtimeObjects.values(), (runtime) => ({ ...runtime.object }));
+      return Array.from(runtimeObjects.values()).filter((runtime) => runtime.discoverable !== false)
+        .map((runtime) => ({ ...runtime.object }));
     },
     requestRender,
     updateTheme,
@@ -2255,7 +2359,7 @@ export function createModel(ui: UI) {
     requestRender();
   });
   ["wheel", "keydown", "pointerdown", "pointermove", "pointerup"].forEach((event) =>
-    canvas.addEventListener(event, requestRender, { passive: true })
+    canvas.addEventListener(event, requestRender, { signal: lifecycle.signal, passive: true })
   );
   engine.runRenderLoop(() => {
     if (document.hidden) return;

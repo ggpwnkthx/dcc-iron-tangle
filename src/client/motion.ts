@@ -26,7 +26,10 @@ export class MotionRegistry {
   register(id: string, step: MotionStep) {
     if (this.#steps.has(id)) throw new TypeError(`Motion ${id} is already registered`);
     this.#steps.set(id, step);
-    return () => this.remove(id);
+    return () => {
+      if (this.#steps.get(id) !== step) return false;
+      return this.remove(id);
+    };
   }
 
   remove(id: string) {

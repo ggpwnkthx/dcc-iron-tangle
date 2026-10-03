@@ -1,11 +1,8 @@
 import type { IronObject, LandmarkId } from "./types.ts";
-import { MIMIC_SPECS, YARD_SPECS } from "./scene_specs.ts";
+import { LEGACY_LINE_IDS } from "./scene_specs.ts";
+import type { createObjectRegistry } from "./object_definitions.ts";
 
-export interface ObjectRegistry {
-  routes: ReadonlySet<string>;
-  services: ReadonlySet<string>;
-  nodes: ReadonlySet<string>;
-}
+export type ObjectRegistry = ReturnType<typeof createObjectRegistry>;
 
 /** Return the route/service identity carried by route-like objects. */
 export function objectRouteId(o: IronObject): string | null {
@@ -21,14 +18,21 @@ export function objectRouteId(o: IronObject): string | null {
   }
 }
 
-const landmarks = new Set<LandmarkId>(["logo", "abyss", "cutaway", "wreckage", "portals"]);
-const yardIds = new Set(YARD_SPECS.map((spec) => spec.id));
-const mimicIds = new Set(MIMIC_SPECS.map((spec) => spec.id));
+/** Migrate positional aliases before validating against the current definitions. */
+export function canonicalRouteId(id: string): string {
+  return Object.hasOwn(LEGACY_LINE_IDS, id) ? (LEGACY_LINE_IDS[id] ?? id) : id;
+}
 
 /** Validate persisted JSON and construct a clean object with only the relevant fields. */
 export function parseObject(value: unknown, registry: ObjectRegistry): IronObject | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const o = value as Record<string, unknown>;
+  const o = { ...value } as Record<string, unknown>;
+  if (typeof o.id === "string" && (o.kind === "route" || o.kind === "train")) {
+    o.id = canonicalRouteId(o.id);
+  }
+  if (typeof o.route === "string" && (o.kind === "station" || o.kind === "stop")) {
+    o.route = canonicalRouteId(o.route);
+  }
   const isRoute = (id: unknown): id is string => {
     if (typeof id !== "string") return false;
     const unmapped = /^unmapped-(\d+)-(-?1)$/.exec(id);
@@ -58,16 +62,16 @@ export function parseObject(value: unknown, registry: ObjectRegistry): IronObjec
         ? { kind: "stop", route: o.route, t: o.t, label: o.label }
         : null;
     case "yard":
-      return typeof o.id === "number" && Number.isInteger(o.id) && yardIds.has(o.id) &&
+      return typeof o.id === "number" && Number.isInteger(o.id) && registry.yards.has(o.id) &&
           (o.face === 1 || o.face === -1)
         ? { kind: "yard", id: o.id, face: o.face }
         : null;
     case "mimic":
-      return typeof o.id === "number" && Number.isInteger(o.id) && mimicIds.has(o.id)
+      return typeof o.id === "number" && Number.isInteger(o.id) && registry.mimics.has(o.id)
         ? { kind: "mimic", id: o.id }
         : null;
     case "landmark":
-      return typeof o.id === "string" && landmarks.has(o.id as LandmarkId)
+      return typeof o.id === "string" && registry.landmarks.has(o.id as LandmarkId)
         ? { kind: "landmark", id: o.id as LandmarkId }
         : null;
     default:
@@ -89,4 +93,40 @@ export function objectKey(o: IronObject = { kind: "overview", view: "whole" }): 
     default:
       return `${o.kind}:${o.id}`;
   }
+}
+
+/** Reconcile bookmarks after definitions change, preserving virtual unmapped-line identities. */
+export function reconcileObjects(
+  values: readonly unknown[],
+  registry: ObjectRegistry,
+): IronObject[] {
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    const object = parseObject(value, registry);
+    if (!object || seen.has(objectKey(object))) return [];
+    seen.add(objectKey(object));
+    return [object];
+  });
+}
+
+export function isObjectAvailable(object: IronObject, registry: ObjectRegistry): boolean {
+  return object.kind === "overview" || parseObject(object, registry) !== null;
+}
+
+export function reconcileHistory(
+  items: readonly IronObject[],
+  index: number,
+  registry: ObjectRegistry,
+) {
+  const history: IronObject[] = [];
+  let nextIndex = -1;
+  items.forEach((object, i) => {
+    const valid = object.kind === "overview" ? object : parseObject(object, registry);
+    if (valid) {
+      history.push(valid);
+      if (i <= index) nextIndex = history.length - 1;
+    }
+  });
+  if (!history.length) history.push({ kind: "overview", view: "whole" });
+  return { items: history, index: Math.max(0, nextIndex) };
 }

@@ -42,24 +42,52 @@ HTML and CSS remain authored in their native formats under `src/site/`.
 
 ### Scene authoring
 
-Frequently edited scene definitions live in `src/client/scene_specs.ts`. Yard identities and
-placement, Station Mimic placement, ring geometry, cutaway movement, and train movement defaults are
-data rather than render-loop branches. The yard and Mimic specs are also consumed by navigation and
-saved-object validation, so adding or removing one does not require updating three separate counts.
+Frequently edited scene definitions live in `src/client/scene_specs.ts`: colored lines, named
+stations, train services and stops, yards, Mimics, landmarks, ring geometry, and motion settings.
+`src/client/object_definitions.ts` derives discovery entries, service connections, and validation
+registries from those definitions. Authored IDs and references are checked for duplicates and
+dangling connections before scene construction.
 
-Runtime movement is registered through `src/client/motion.ts`. A moving object owns a stable motion
-id and an update callback; removing a dynamic object removes the callback with the same id. Dynamic
-scene resources are owned through `src/client/runtime_objects.ts`: each logical `IronObject`
-identity can register one runtime handle whose disposer tears down its meshes, instances, and motion
-registrations together. Replacing an object preserves its stable identity while swapping owned
-resources. The render loop advances one shared clock instead of knowing how every train, cutaway
-carriage, or cargo object moves.
+Colored lines have permanent IDs such as `line:red` and `line:tangerine`. Their `axisIndex` is a
+separate, stable layout slot; changing display order does not change identities or geometry.
+Existing `color-N` bookmarks migrate through the fixed `LEGACY_LINE_IDS` map and are rewritten to
+permanent IDs. Never renumber that map or reuse a deleted ID for different content. Geometry and
+palette lookup use layout slots instead of array positions.
 
-The renderer keeps lifecycle, selection, camera, and render-loop orchestration in `model.ts`.
-Reusable renderer concerns live under `src/client/model/`: numerical helpers in `math.ts`, Babylon
-primitive builders in `meshes.ts`, palette/material lifecycle in `theme.ts`, and inferred
-ring/station geometry in `topology.ts`. Keep identity, placement parameters, and tunable movement
-parameters in `scene_specs.ts` so edits remain localized and reviewable.
+To add or change content, edit the relevant specs and refresh after rebuilding with `deno task dev`
+or `deno task build`. Services define their geometry recipe and connected stops together. Station
+positions use ring or Nightmare-path recipes. Babylon mesh construction stays in `model.ts` and
+`model/meshes.ts`; custom appearances can still require renderer changes. Removing a definition also
+requires updating any definitions that refer to it.
+
+Runtime resources use `RuntimeObjectRegistry` and idempotent `ResourceScope` owners in
+`src/client/runtime_objects.ts`. Authored route tracks, trains, stations, yards, Mimics, landmark
+groups, and service platforms register owned handles. Shared materials, prototypes, and the batched
+background network belong to the scene. The background rails remain batched rather than allocating a
+logical runtime handle for every rail.
+
+A moving handle prepares its meshes before activation and acquires its motion ID in `activate()`.
+`registry.replace(object, prepare)` builds the replacement while the old object is still live,
+releases the old owner, then activates the new owner. A preparation failure leaves the old object
+intact. An activation failure disposes the replacement and reports removal; it does not pretend to
+restore an already-disposed object. Resource cleanup runs in reverse order and continues after
+individual errors.
+
+Selecting another unmapped line releases the previous temporary expansion and its train together.
+That release preserves the logical line and its bookmarks. `model.rebuildInferredRoute()` exercises
+same-identity replacement; `model.dispose()` stops rendering, releases owned resources, and detaches
+model/navigation listeners and observers. The render loop advances one shared clock through
+`src/client/motion.ts`.
+
+Permanent definition changes and runtime resource changes are separate events. Navigation responds
+to `iron:objects-changed` by refreshing temporary discovery entries. After an integration changes
+authored definitions and their scene resources, `iron:definitions-changed` reconciles saved objects,
+recent selections, history, the current selection, and connection shortcuts. Source edits take
+effect on reload; this is an authoring API foundation, not an in-browser scene editor.
+
+The renderer keeps scene construction, selection, camera, and render-loop orchestration in
+`model.ts`. Reusable numerical helpers, Babylon primitive builders, palette/material lifecycle, and
+inferred ring/station geometry live under `src/client/model/`.
 
 Babylon uses its typed ES module package, resolved by Deno's import map:
 
@@ -301,24 +329,27 @@ iron-tangle/
 
 ## Files and editing
 
-| File                                           | Purpose                                                                           |
-| ---------------------------------------------- | --------------------------------------------------------------------------------- |
-| `deno.json`, `deno.lock`                       | Deno tasks, pinned package mapping, strict compiler configuration, integrity lock |
-| `scripts/build.ts`, `scripts/site.ts`          | Reproducible `dist/` generation and static-site synchronization                   |
-| `scripts/dev.ts`                               | Build/watch/server orchestration and process cleanup                              |
-| `src/main.ts`, `src/server.ts`                 | Typed streaming HTTP server                                                       |
-| `src/lib/`                                     | Server CLI validation, path containment, MIME types, HTTP errors                  |
-| `src/client/main.ts`                           | Explicit UI → scene → navigation initialization                                   |
-| `src/client/model.ts`                          | Typed Babylon geometry, routes, trains, camera, picking, animation                |
-| `src/client/interface.ts`                      | Responsive panels, keyboard access, themes, fullscreen, browser storage           |
-| `src/client/navigation.ts`                     | Catalog, search, filters, saved/recent selections, history, connections           |
-| `src/client/types.ts`                          | Shared domain objects, route/train types, scene metadata and targets              |
-| `src/client/objects.ts`                        | Stored JSON validation and stable object keys                                     |
-| `src/client/dom.ts`                            | Typed DOM lookup and required-value/context helpers                               |
-| `src/site/index.html`, `src/site/assets/*.css` | Page markup and styles                                                            |
-| `dist/`                                        | Generated site artifact; ignored by git and deployed by GitHub Actions            |
-| `tests/`                                       | Deno configuration, server, and object validation tests                           |
-| `licenses/`                                    | Babylon license and notice                                                        |
+| File                                           | Purpose                                                                            |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `deno.json`, `deno.lock`                       | Deno tasks, pinned package mapping, strict compiler configuration, integrity lock  |
+| `scripts/build.ts`, `scripts/site.ts`          | Reproducible `dist/` generation and static-site synchronization                    |
+| `scripts/dev.ts`                               | Build/watch/server orchestration and process cleanup                               |
+| `src/main.ts`, `src/server.ts`                 | Typed streaming HTTP server                                                        |
+| `src/lib/`                                     | Server CLI validation, path containment, MIME types, HTTP errors                   |
+| `src/client/main.ts`                           | Explicit UI → scene → navigation initialization                                    |
+| `src/client/model.ts`                          | Typed Babylon geometry, routes, trains, camera, picking, animation                 |
+| `src/client/interface.ts`                      | Responsive panels, keyboard access, themes, fullscreen, browser storage            |
+| `src/client/navigation.ts`                     | Catalog, search, filters, saved/recent selections, history, connections            |
+| `src/client/types.ts`                          | Shared domain objects, route/train types, scene metadata and targets               |
+| `src/client/objects.ts`                        | Stored JSON validation, legacy ID migration, reference reconciliation, stable keys |
+| `src/client/scene_specs.ts`                    | Shared authored object identities, connections, placement, and movement settings   |
+| `src/client/object_definitions.ts`             | Discovery entries, identity registries, and definition validation                  |
+| `src/client/runtime_objects.ts`                | Runtime resource ownership, staged replacement, and cleanup                        |
+| `src/client/dom.ts`                            | Typed DOM lookup and required-value/context helpers                                |
+| `src/site/index.html`, `src/site/assets/*.css` | Page markup and styles                                                             |
+| `dist/`                                        | Generated site artifact; ignored by git and deployed by GitHub Actions             |
+| `tests/`                                       | Deno configuration, server, and object validation tests                            |
+| `licenses/`                                    | Babylon license and notice                                                         |
 
 Geometry is generated in TypeScript; there are no missing mesh files or remote textures. The
 searchable catalog covers identified points and representative landmarks. Thousands of unnamed rail

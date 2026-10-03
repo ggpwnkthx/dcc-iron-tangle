@@ -61,7 +61,7 @@ export interface Route {
   mesh?: B.Mesh;
   hidden?: B.Mesh;
   opposing?: B.Mesh;
-  lowPlatform?: B.Mesh;
+  lowPlatforms?: { mesh: B.Mesh; t: number; label: string }[];
 }
 export interface Train {
   r: Route;

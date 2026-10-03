@@ -1,8 +1,10 @@
 import { objectKey, objectRouteId, parseObject } from "../src/client/objects.ts";
+import { createObjectRegistry } from "../src/client/object_definitions.ts";
 import { assert, equal } from "./assert.ts";
 
 const registry = {
-  routes: new Set(["color-0"]),
+  ...createObjectRegistry(),
+  routes: new Set(["line:red"]),
   services: new Set(["nightmare"]),
   nodes: new Set(["red83"]),
 };
@@ -30,6 +32,7 @@ Deno.test("saved selections retain legitimate boundaries and strip irrelevant fi
   const station = parseObject({ kind: "station", route: "color-0", n: 436, id: "wrong" }, registry);
   assert(station?.kind === "station");
   equal(station.n, 436);
+  equal(station.route, "line:red");
   equal("id" in station, false);
   assert(parseObject({ kind: "route", id: "unmapped-3122--1" }, registry));
   assert(parseObject({ kind: "yard", id: 0, face: -1 }, registry));

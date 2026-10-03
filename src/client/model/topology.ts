@@ -1,6 +1,6 @@
 import { STATION_24_PLATFORM_EXITS } from "../canon.ts";
 import { required } from "../dom.ts";
-import { LOGO_RINGS, YARD_SPECS } from "../scene_specs.ts";
+import { LOGO_RINGS, STATION_SPECS, YARD_SPECS } from "../scene_specs.ts";
 import * as B from "@babylonjs/core";
 import type { StationNode } from "../types.ts";
 import { hash, TAU } from "./math.ts";
@@ -69,146 +69,15 @@ export function nightmarePoint(t: number) {
   p.y = 24 + 9 * Math.sin(t * TAU);
   return p;
 }
-export const nodes: Record<string, StationNode> = {
-  red83: {
-    n: 83,
-    p: nightmarePoint(0),
-    label: "83 · Red / Yellow",
-    lines: ["Red", "Yellow"],
-    ring: 0,
-    priority: 1,
-  },
-  purple283: {
-    n: 283,
-    p: nightmarePoint(.125),
-    label: "283 · Purple / Mauve",
-    lines: ["Purple", "Mauve"],
-    ring: 0,
-    priority: 2,
-  },
-  abyss436: {
-    n: 436,
-    p: nightmarePoint(.25),
-    label: "436 · Abyss station",
-    lines: [],
-    ring: 0,
-    priority: 0,
-  },
-  green283: {
-    n: 283,
-    p: nightmarePoint(.375),
-    label: "283 · Green / Yellow",
-    lines: ["Green", "Yellow"],
-    ring: 0,
-    priority: 2,
-  },
-  plum83: {
-    n: 83,
-    p: nightmarePoint(.5),
-    label: "83 · Tangerine / Plum",
-    lines: ["Tangerine", "Plum"],
-    ring: 0,
-    priority: 1,
-  },
-  orange83: {
-    n: 83,
-    p: ringPoint(0, -2.7),
-    label: "83 · Orange / Indigo",
-    lines: ["Orange", "Indigo"],
-    ring: 0,
-    priority: 4,
-  },
-  yellow89: {
-    n: 89,
-    p: ringPoint(0, -2.4),
-    label: "89 · Yellow / Indigo",
-    lines: ["Yellow", "Indigo"],
-    ring: 0,
-    priority: 5,
-  },
-  tangerine89: {
-    n: 89,
-    p: ringPoint(1, .35),
-    label: "89 · Tangerine / Escape Velocity",
-    lines: ["Tangerine"],
-    ring: 0,
-    priority: 5,
-  },
-  mauve281: {
-    n: 281,
-    p: ringPoint(2, Math.PI),
-    label: "281 · Mauve / Dismemberment",
-    lines: ["Mauve"],
-    ring: 0,
-    priority: 4,
-  },
-  ochre149: {
-    n: 149,
-    p: ringPoint(2, 0),
-    label: "149 · Ochre / Dismemberment",
-    lines: ["Ochre"],
-    ring: 0,
-    priority: 4,
-  },
-  azure199: {
-    n: 199,
-    p: ringPoint(3, Math.PI * .6),
-    label: "199 · Azure / Brown",
-    lines: ["Azure", "Brown"],
-    ring: 0,
-    priority: 5,
-  },
-  vermillion101: {
-    n: 101,
-    p: ringPoint(1, .62),
-    label: "101 · Vermillion",
-    lines: ["Vermillion"],
-    ring: 0,
-    priority: 6,
-  },
-  cobalt271: {
-    n: 271,
-    p: ringPoint(3, 0),
-    label: "271 · Camel / Cobalt / Eviscerator",
-    lines: ["Camel", "Cobalt"],
-    ring: 0,
-    priority: 4,
-  },
-  security75: {
-    n: 75,
-    p: ringPoint(1, .18),
-    label: "75 · Security / repair hub",
-    lines: ["Vermillion"],
-    ring: 0,
-    priority: 5,
-  },
-  employee60: {
-    n: 60,
-    p: ringPoint(3, -Math.PI / 3),
-    label: "60 · Employee hub",
-    lines: [],
-    ring: 0,
-    priority: 5,
-  },
-};
-const nodeRings: Record<string, number> = {
-  red83: 0,
-  purple283: 0,
-  abyss436: 0,
-  green283: 1,
-  plum83: 1,
-  orange83: 0,
-  yellow89: 0,
-  tangerine89: 1,
-  mauve281: 2,
-  ochre149: 2,
-  azure199: 3,
-  vermillion101: 1,
-  cobalt271: 3,
-  security75: 1,
-  employee60: 3,
-};
-Object.entries(nodes).forEach(([id, n]) => n.ring = required(nodeRings[id]));
+export const nodes: Record<string, StationNode> = Object.fromEntries(
+  Object.entries(STATION_SPECS).map(([id, spec]) => {
+    const { placement, ...node } = spec;
+    const p = placement.kind === "nightmare"
+      ? nightmarePoint(placement.t)
+      : ringPoint(placement.ring, placement.angle);
+    return [id, { ...node, p }];
+  }),
+);
 const angleAt = (ring: number, p: B.Vector3) =>
   Math.atan2(p.z - required(logoRings[ring]).z, p.x - required(logoRings[ring]).x);
 const wrapAngle = (a: number) => ((a % TAU) + TAU) % TAU;

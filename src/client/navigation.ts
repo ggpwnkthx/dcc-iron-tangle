@@ -3,9 +3,20 @@ import {
   PRIMARY_STAIRWELL_STATIONS,
   stationCanonRole,
 } from "./canon.ts";
-import { objectKey as key, objectRouteId, parseObject } from "./objects.ts";
+import {
+  isObjectAvailable,
+  objectKey as key,
+  objectRouteId,
+  reconcileHistory,
+  reconcileObjects,
+} from "./objects.ts";
 import { element, query, required, rootElement } from "./dom.ts";
-import { MIMIC_SPECS, YARD_SPECS } from "./scene_specs.ts";
+import { LANDMARK_SPECS, SERVICE_SPECS } from "./scene_specs.ts";
+import {
+  catalogDefinitions,
+  createObjectRegistry,
+  serviceConnections,
+} from "./object_definitions.ts";
 /* Object discovery, saved places, recent selections, and connected stops. */
 import type { Model } from "./model.ts";
 import type { UI } from "./interface.ts";
@@ -23,6 +34,11 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     return;
   }
   const model = initialModel;
+  const lifecycle = { signal: model.lifecycleSignal };
+  lifecycle.signal.addEventListener("abort", () => {
+    $("it-results").replaceChildren();
+    $("it-connections").replaceChildren();
+  }, { once: true });
   const search = $("it-search"), category = $("it-category"), list = $("it-results");
   const categories = {
     stations: "Station / hub",
@@ -66,11 +82,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     restoring = false;
   const own = (object: object, id: PropertyKey | undefined) =>
     id !== undefined && Object.prototype.hasOwnProperty.call(object, id);
-  const registry = {
-    routes: new Set(model.knownRoutes.map((route) => route.id)),
-    services: new Set(Object.keys(model.namedRoutes)),
-    nodes: new Set(Object.keys(model.nodes)),
-  };
+  let registry = createObjectRegistry();
   function titleOf(o: IronObject) {
     const unmapped = objectRouteId(o)?.match(/^unmapped-(\d+)-(-?1)$/);
     return unmapped
@@ -89,119 +101,13 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       rank,
     };
   }
-  function add(object: IronObject, group: Group, meta: string, aliases = "", rank = 100) {
-    catalog.push(entry(object, group, meta, aliases, rank));
-  }
   function rebuildCatalog() {
     catalog.length = 0;
-    add(
-      { kind: "landmark", id: "logo" },
-      "landmarks",
-      "Named circuits · interpreted unequal rings",
-      "syndicate logo symbol emblem wormhole galaxy rings overhead",
-      -2,
-    );
-    add(
-      { kind: "landmark", id: "abyss" },
-      "landmarks",
-      "Abyss cutaway",
-      "436 central abyss engine cars galaxy center",
-      0,
-    );
-    add(
-      { kind: "landmark", id: "cutaway" },
-      "landmarks",
-      "Opposing gravity and hidden conveyor",
-      "tunnel passage cross section",
-      4,
-    );
-    add(
-      { kind: "landmark", id: "wreckage" },
-      "landmarks",
-      "Reconstructed wreckage below the Abyss",
-      "cars carriages scrap abyss",
-      15,
-    );
-    add(
-      { kind: "landmark", id: "portals" },
-      "landmarks",
-      "Reconstructed portal placement",
-      "engine locomotive return abyss",
-      16,
-    );
-    Object.entries(model.nodes).forEach(([id, n]) => {
-      const special = id === "security75"
-        ? "Downward Dog · security / repair"
-        : id === "employee60"
-        ? "Employee hub · staff access"
-        : id === "abyss436"
-        ? "Nightmare Express · Abyss station"
-        : "Documented connection · inferred position";
-      add(
-        { kind: "node", id },
-        "stations",
-        special,
-        n.lines.join(" "),
-        id === "red83" ? 2 : id === "employee60" ? 5 : id === "security75" ? 6 : 20 + n.priority,
-      );
+    catalogDefinitions().forEach(({ object, group, meta, aliases, rank }) => {
+      if (isObjectAvailable(object, registry)) {
+        catalog.push(entry(object, group, meta, aliases, rank));
+      }
     });
-    Object.values(model.namedRoutes).forEach((r) =>
-      add(
-        { kind: "train", id: r.id },
-        "trains",
-        "Locate leading vehicle",
-        r.stops.map((s) => s[0]).join(" "),
-        r.id === "nightmare" ? 1 : 12,
-      )
-    );
-    model.knownRoutes.forEach((r) =>
-      add(
-        { kind: "route", id: r.id },
-        "lines",
-        "One-way subway · inferred ring path",
-        r.namedNodes.map((n) => n.label).join(" "),
-        60,
-      )
-    );
-    YARD_SPECS.forEach(({ id, label, named }) => {
-      add(
-        { kind: "yard", id, face: 1 },
-        "yards",
-        named ? "Named yard · reconstructed position" : "Unidentified yard · inferred",
-        label === "E" ? "Homeward Bound staff service" : "",
-        id === 3 ? 3 : 70 + id,
-      );
-      add(
-        { kind: "yard", id, face: -1 },
-        "yards",
-        "Opposing identity and pairing inferred",
-        "trainyard " + label + " inverted",
-        90 + id,
-      );
-    });
-    MIMIC_SPECS.forEach(({ id }) => {
-      add(
-        { kind: "mimic", id },
-        "bosses",
-        "Terminus 433 · hidden stairwell revealed after Mimic removal · placement inferred",
-        "station mimic boss terminus 433 hidden stairwell saferoom",
-        id === 1 ? 7 : 80 + id,
-      );
-    });
-    add(
-      { kind: "stop", route: "escape", t: 0, label: "24 · Escape Velocity III / stairwell hub" },
-      "stations",
-      "5 stairwells · 10 platform exits · documented hub; service geometry inferred",
-      "escape velocity escape velocity iii stairwell stairs station 24",
-      35,
-    );
-    add(
-      { kind: "stop", route: "homeward", t: .4, label: "24 · staff access" },
-      "stations",
-      "Homeward Bound · representative staff access toward station 60",
-      "homeward bound stairs staff 24",
-      36,
-    );
 
     model.runtimeObjects.forEach((object) => {
       if (!catalog.some((candidate) => candidate.key === key(object))) {
@@ -270,27 +176,19 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
 
   function restoreObjects(name: string) {
     const stored = ui.readStore(name, []);
-    return Array.isArray(stored)
-      ? stored.map((value) => parseObject(value, registry)).filter((value): value is IronObject =>
-        value !== null
-      ).filter((o, i, all) => all.findIndex((p) => key(p) === key(o)) === i)
-      : [];
+    return Array.isArray(stored) ? reconcileObjects(stored, registry) : [];
   }
   const favorites = new Map(restoreObjects("favorites").map((o) => [key(o), o]));
   let recent = restoreObjects("recent").slice(0, 20);
+  ui.writeStore("favorites", Array.from(favorites.values()));
+  ui.writeStore("recent", recent);
   function routeColor(object: IronObject) {
     const route = objectRouteId(object);
     if (!route) return null;
     const known = model.knownRoutes.find((r) => r.id === route);
     if (known) return model.routeColor(known.i).toHexString();
-    const colors: Record<string, string> = {
-      nightmare: "var(--purple)",
-      dismemberment: "var(--foreground)",
-      eviscerator: "var(--red)",
-      escape: "var(--green)",
-      homeward: "var(--orange)",
-    };
-    return colors[String(route)] || null;
+    const spec = SERVICE_SPECS.find((spec) => spec.id === route);
+    return spec ? "var(--" + spec.color + ")" : null;
   }
   function updateStepper() {
     const o = model.state.object, index = results.findIndex((e) => e.key === key(o));
@@ -477,39 +375,15 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     updatePressed();
   }
   function serviceStops(id: string): IronObject[] {
-    const node = (id: string): IronObject => ({ kind: "node", id });
-    const known: Record<string, IronObject[]> = {
-      nightmare: [
-        node("red83"),
-        node("purple283"),
-        node("abyss436"),
-        node("green283"),
-        node("plum83"),
-      ],
-      dismemberment: [node("ochre149"), node("mauve281")],
-      eviscerator: [node("cobalt271")],
-      escape: [node("tangerine89"), {
-        kind: "stop",
-        route: "escape",
-        t: 0,
-        label: "24 · Escape Velocity III / stairwell hub",
-      }],
-      homeward: [{ kind: "yard", id: 3, face: 1 }, {
-        kind: "stop",
-        route: "homeward",
-        t: .4,
-        label: "24 · staff access",
-      }, node("employee60")],
-    };
-    return known[id] || [];
+    return serviceConnections(id).filter((object) => isObjectAvailable(object, registry));
   }
   function connectionObjects(o: IronObject | null): IronObject[] {
     if (!o) return [];
     if (o.kind === "node") {
       const n = model.nodes[o.id],
-        connections: IronObject[] = required(n).lines.map((name) => ({
+        connections: IronObject[] = required(n).lines.map((id) => ({
           kind: "route",
-          id: required(model.knownRoutes.find((r) => r.name === name)).id,
+          id,
         }));
       Object.keys(model.namedRoutes).forEach((id) => {
         if (serviceStops(id).some((p) => p.kind === "node" && p.id === o.id)) {
@@ -519,24 +393,19 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       return connections;
     }
     if (o.kind === "yard") {
-      return o.id === 3 && o.face === 1 ? [{ kind: "train", id: "homeward" }] : [];
+      return SERVICE_SPECS.filter((spec) =>
+        spec.stops.some((stop) =>
+          stop.target.kind === "yard" && stop.target.id === o.id && stop.target.face === o.face
+        )
+      ).map((spec): IronObject => ({ kind: "train", id: spec.id }));
     }
     if (o.kind === "landmark") {
+      const connections = LANDMARK_SPECS.find((spec) => spec.id === o.id)?.connections ?? [];
       return o.id === "logo"
-        ? ["nightmare", "dismemberment", "eviscerator", "escape", "homeward"].map((
-          id,
-        ): IronObject => ({
-          kind: "route",
-          id,
-        })).concat([{ kind: "landmark", id: "abyss" }])
-        : o.id === "abyss"
-        ? [{ kind: "node", id: "abyss436" }, { kind: "landmark", id: "portals" }, {
-          kind: "landmark",
-          id: "wreckage",
-        }]
-        : o.id === "cutaway"
-        ? []
-        : [{ kind: "landmark", id: "abyss" }];
+        ? SERVICE_SPECS.map((spec): IronObject => ({ kind: "route", id: spec.id })).concat(
+          connections,
+        )
+        : connections;
     }
     const id = objectRouteId(o);
     if (!id) return [];
@@ -571,7 +440,8 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     if (o.kind === "node") {
       const n = model.nodes[o.id];
       return required(n).lines.length
-        ? required(n).n + " · " + required(n).lines.join(" / ")
+        ? required(n).n + " · " +
+          required(n).lines.map((id) => model.objectTitle({ kind: "route", id })).join(" / ")
         : required(n).label;
     }
     return model.objectTitle(o);
@@ -613,7 +483,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       $(id).disabled = historyIndex >= history.length - 1;
     });
     $("it-connections").replaceChildren();
-    const connected = connectionObjects(o);
+    const connected = connectionObjects(o).filter((object) => isObjectAvailable(object, registry));
     $("it-connection-group").hidden = connected.length === 0;
     $("it-connections-label").textContent = o.kind === "node"
       ? "CONNECTED ROUTES"
@@ -678,24 +548,50 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
   root.addEventListener(
     "iron:selection",
     (event) => updateSelection((event as CustomEvent<IronObject>).detail),
+    { signal: lifecycle.signal },
   );
+  function reconcileDefinitions() {
+    registry = createObjectRegistry();
+    const saved = reconcileObjects(Array.from(favorites.values()), registry);
+    favorites.clear();
+    saved.forEach((object) => favorites.set(key(object), object));
+    recent = reconcileObjects(recent, registry).slice(0, 20);
+    const reconciled = reconcileHistory(history, historyIndex, registry);
+    history = reconciled.items;
+    historyIndex = reconciled.index;
+    ui.writeStore("favorites", saved);
+    ui.writeStore("recent", recent);
+    if (!isObjectAvailable(model.state.object, registry)) {
+      model.selectObject(
+        history[historyIndex] ?? { kind: "overview", view: "whole" },
+        false,
+        false,
+      );
+    }
+    rebuildCatalog();
+    renderResults();
+    updateSelection(model.state.object, false);
+  }
+  root.addEventListener("iron:definitions-changed", reconcileDefinitions, {
+    signal: lifecycle.signal,
+  });
   root.addEventListener("iron:objects-changed", () => {
     rebuildCatalog();
     renderResults();
-  });
-  search.addEventListener("input", () => renderResults(true));
-  category.addEventListener("change", () => renderResults(true));
+  }, { signal: lifecycle.signal });
+  search.addEventListener("input", () => renderResults(true), { signal: lifecycle.signal });
+  category.addEventListener("change", () => renderResults(true), { signal: lifecycle.signal });
   document.querySelectorAll<HTMLButtonElement>("[data-category]").forEach((button) =>
     button.addEventListener("click", () => {
       category.value = required(button.dataset.category);
       renderResults(true);
-    })
+    }, { signal: lifecycle.signal })
   );
   document.querySelectorAll<HTMLButtonElement>("[data-collection]").forEach((button) =>
     button.addEventListener("click", () => {
       collection = required(button.dataset.collection);
       renderResults(true);
-    })
+    }, { signal: lifecycle.signal })
   );
   document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach((button) =>
     button.addEventListener("click", () => {
@@ -704,17 +600,17 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       const picker = $("it-cutaway-picker"), fromMenu = picker.contains(button);
       picker.open = false;
       if (fromMenu) query("summary", picker).focus({ preventScroll: true });
-    })
+    }, { signal: lifecycle.signal })
   );
   $("it-search-clear").addEventListener("click", () => {
     search.value = "";
     renderResults(true);
     search.focus();
-  });
+  }, { signal: lifecycle.signal });
   $("it-reset-filters").addEventListener("click", () => {
     resetFilters();
     search.focus();
-  });
+  }, { signal: lifecycle.signal });
   search.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -733,7 +629,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
         renderResults(true);
       } else ui.setBrowser(false, true);
     }
-  });
+  }, { signal: lifecycle.signal });
   list.addEventListener("keydown", (event) => {
     const buttons = resultButtons(), index = buttons.indexOf(event.target as HTMLButtonElement);
     if (index < 0) return;
@@ -753,20 +649,24 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       event.stopPropagation();
       required(buttons[next]).focus();
     }
+  }, { signal: lifecycle.signal });
+  $("it-back").addEventListener("click", () => revisit(-1), { signal: lifecycle.signal });
+  $("it-forward").addEventListener("click", () => revisit(1), { signal: lifecycle.signal });
+  $("it-back-mobile").addEventListener("click", () => revisit(-1), { signal: lifecycle.signal });
+  $("it-forward-mobile").addEventListener("click", () => revisit(1), { signal: lifecycle.signal });
+  $("it-object-prev").addEventListener("click", () => stepObject(-1), { signal: lifecycle.signal });
+  $("it-object-next").addEventListener("click", () => stepObject(1), { signal: lifecycle.signal });
+  $("it-focus").addEventListener("click", () => model.focusSelection(), {
+    signal: lifecycle.signal,
   });
-  $("it-back").addEventListener("click", () => revisit(-1));
-  $("it-forward").addEventListener("click", () => revisit(1));
-  $("it-back-mobile").addEventListener("click", () => revisit(-1));
-  $("it-forward-mobile").addEventListener("click", () => revisit(1));
-  $("it-object-prev").addEventListener("click", () => stepObject(-1));
-  $("it-object-next").addEventListener("click", () => stepObject(1));
-  $("it-focus").addEventListener("click", () => model.focusSelection());
   $("it-save-selection").addEventListener("click", () => {
     if (model.state.object.kind !== "overview") toggleFavorite(model.state.object);
+  }, { signal: lifecycle.signal });
+  $("it-overview").addEventListener("click", () => model.showOverview(), {
+    signal: lifecycle.signal,
   });
-  $("it-overview").addEventListener("click", () => model.showOverview());
-  $("it-zoom-in").addEventListener("click", () => model.zoom(.8));
-  $("it-zoom-out").addEventListener("click", () => model.zoom(1.25));
+  $("it-zoom-in").addEventListener("click", () => model.zoom(.8), { signal: lifecycle.signal });
+  $("it-zoom-out").addEventListener("click", () => model.zoom(1.25), { signal: lifecycle.signal });
   globalThis.addEventListener("keydown", (event) => {
     if (
       event.defaultPrevented || event.ctrlKey || event.metaKey ||
@@ -790,7 +690,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       event.preventDefault();
       model.zoom(1.25);
     }
-  });
+  }, { signal: lifecycle.signal });
   renderResults();
   updateSelection(model.state.object, false);
   root.__ironNavigation = {

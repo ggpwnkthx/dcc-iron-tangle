@@ -3,6 +3,10 @@ import type { IronObject } from "./types.ts";
 
 export interface RuntimeObject {
   readonly object: IronObject;
+  /** Authored objects already have catalog entries; temporary expansions can opt in. */
+  readonly discoverable?: boolean;
+  /** Acquire exclusive registrations only after the previous handle has been released. */
+  activate?(): void;
   dispose(): void;
 }
 
@@ -38,6 +42,13 @@ export class RuntimeObjectRegistry {
     const key = objectKey(runtime.object);
     if (this.#objects.has(key)) throw new TypeError(`Object ${key} is already registered`);
     this.#objects.set(key, runtime);
+    try {
+      runtime.activate?.();
+    } catch (error) {
+      this.#objects.delete(key);
+      runtime.dispose();
+      throw error;
+    }
     this.onChange("add", runtime.object);
     return () => {
       if (this.#objects.get(key) !== runtime) return false;
@@ -45,11 +56,29 @@ export class RuntimeObjectRegistry {
     };
   }
 
-  replace(runtime: RuntimeObject) {
-    const key = objectKey(runtime.object);
+  replace(object: IronObject, prepare: () => RuntimeObject) {
+    const key = objectKey(object);
     const previous = this.#objects.get(key);
     if (!previous) throw new TypeError(`Object ${key} is not registered`);
-    previous.dispose();
+    // Preparation can fail without disturbing the live object. Motion IDs are
+    // acquired in activate(), after the previous owner's disposal.
+    const runtime = prepare();
+    if (objectKey(runtime.object) !== key) {
+      runtime.dispose();
+      throw new TypeError("Replacement must preserve object identity");
+    }
+    this.#objects.delete(key);
+    try {
+      previous.dispose();
+      runtime.activate?.();
+    } catch (error) {
+      try {
+        runtime.dispose();
+      } finally {
+        this.onChange("remove", object);
+      }
+      throw error;
+    }
     this.#objects.set(key, runtime);
     this.onChange("replace", runtime.object);
   }
@@ -58,16 +87,58 @@ export class RuntimeObjectRegistry {
     const key = objectKey(object);
     const runtime = this.#objects.get(key);
     if (!runtime) return false;
-    runtime.dispose();
     this.#objects.delete(key);
-    this.onChange("remove", object);
+    try {
+      runtime.dispose();
+    } finally {
+      this.onChange("remove", object);
+    }
     return true;
   }
 
   dispose() {
     const objects = Array.from(this.#objects.values());
     this.#objects.clear();
-    for (const runtime of objects) runtime.dispose();
-    for (const runtime of objects) this.onChange("remove", runtime.object);
+    const errors: unknown[] = [];
+    for (const runtime of objects.reverse()) {
+      try {
+        runtime.dispose();
+      } catch (error) {
+        errors.push(error);
+      } finally {
+        this.onChange("remove", runtime.object);
+      }
+    }
+    if (errors.length) throw new AggregateError(errors, "Object disposal failed");
+  }
+}
+
+/** A small, idempotent owner for meshes, instances, and registration cleanup. */
+export class ResourceScope {
+  #cleanup: (() => void)[] = [];
+  #disposed = false;
+
+  defer(cleanup: () => void) {
+    if (this.#disposed) throw new TypeError("Resource scope is disposed");
+    this.#cleanup.push(cleanup);
+  }
+
+  own<T extends { dispose(): void }>(resource: T): T {
+    this.defer(() => resource.dispose());
+    return resource;
+  }
+
+  dispose() {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    const errors: unknown[] = [];
+    for (const cleanup of this.#cleanup.splice(0).reverse()) {
+      try {
+        cleanup();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length) throw new AggregateError(errors, "Resource disposal failed");
   }
 }

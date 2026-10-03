@@ -1,44 +1,7 @@
 import * as B from "@babylonjs/core";
 import { context2D, element, required } from "../dom.ts";
+import { LINE_SPECS, type PaletteKey } from "../scene_specs.ts";
 import { mix } from "./math.ts";
-
-type PaletteKey =
-  | "background"
-  | "foreground"
-  | "muted-foreground"
-  | "border"
-  | "blue"
-  | "orange"
-  | "green"
-  | "red"
-  | "purple"
-  | "yellow";
-
-export const COLOR_DEFINITIONS: [string, PaletteKey, PaletteKey?, number?][] = [
-  ["Red", "red"],
-  ["Orange", "orange"],
-  ["Yellow", "yellow"],
-  ["Indigo", "blue", "purple", .55],
-  ["Azure", "blue"],
-  ["Purple", "purple"],
-  ["Brown", "orange", "muted-foreground", .6],
-  ["Mauve", "purple", "red", .28],
-  ["Green", "green"],
-  ["Tangerine", "orange", "yellow", .25],
-  ["Plum", "purple", "red", .42],
-  ["Winter Sky", "blue", "background", .38],
-  ["Ochre", "yellow", "orange", .55],
-  ["Fulvous", "orange", "yellow", .45],
-  ["Camel", "orange", "muted-foreground", .4],
-  ["Cobalt", "blue", "purple", .2],
-  ["Puce", "red", "purple", .45],
-  ["Vermillion", "red", "orange", .4],
-  ["Mango", "orange", "yellow", .65],
-  ["Sinopia", "red", "orange", .7],
-  ["Mindaro", "yellow", "green", .22],
-  ["Grullo", "muted-foreground", "orange", .2],
-  ["Zomp", "green", "blue", .35],
-];
 
 interface MaterialEntry {
   m: B.StandardMaterial;
@@ -66,6 +29,8 @@ export function createTheme(scene: B.Scene) {
     "yellow": C.Black(),
   };
   const materials: MaterialEntry[] = [];
+  const ordered = [...LINE_SPECS].sort((a, b) => a.axisIndex - b.axisIndex);
+  const byAxis = new Map(ordered.map((spec) => [spec.axisIndex, spec]));
 
   function token(name: string) {
     $("it-color-probe").style.color = "var(" + name + ")";
@@ -93,8 +58,9 @@ export function createTheme(scene: B.Scene) {
   }
 
   function routeColor(index: number) {
-    const d = required(COLOR_DEFINITIONS[index % COLOR_DEFINITIONS.length]);
-    return d[2] ? mix(palette[d[1]], palette[required(d[2])], d[3] ?? 0) : palette[d[1]].clone();
+    const d = required(byAxis.get(index) ?? ordered[index % ordered.length])
+      .color;
+    return d[1] ? mix(palette[d[0]], palette[d[1]], d[2] ?? 0) : palette[d[0]].clone();
   }
 
   function darkTone() {
@@ -133,7 +99,7 @@ export function createTheme(scene: B.Scene) {
   readPalette();
   return {
     palette,
-    colorDefinitions: COLOR_DEFINITIONS,
+    lineSpecs: LINE_SPECS,
     routeColor,
     darkTone,
     material,

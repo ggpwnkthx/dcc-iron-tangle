@@ -39,7 +39,10 @@ export class RuntimeObjectRegistry {
     if (this.#objects.has(key)) throw new TypeError(`Object ${key} is already registered`);
     this.#objects.set(key, runtime);
     this.onChange("add", runtime.object);
-    return () => this.remove(runtime.object);
+    return () => {
+      if (this.#objects.get(key) !== runtime) return false;
+      return this.remove(runtime.object);
+    };
   }
 
   replace(runtime: RuntimeObject) {

@@ -7,6 +7,20 @@ export interface ObjectRegistry {
   nodes: ReadonlySet<string>;
 }
 
+/** Return the route/service identity carried by route-like objects. */
+export function objectRouteId(o: IronObject): string | null {
+  switch (o.kind) {
+    case "route":
+    case "train":
+      return o.id;
+    case "station":
+    case "stop":
+      return o.route;
+    default:
+      return null;
+  }
+}
+
 const landmarks = new Set<LandmarkId>(["logo", "abyss", "cutaway", "wreckage", "portals"]);
 const yardIds = new Set(YARD_SPECS.map((spec) => spec.id));
 const mimicIds = new Set(MIMIC_SPECS.map((spec) => spec.id));
@@ -71,7 +85,7 @@ export function objectKey(o: IronObject = { kind: "overview", view: "whole" }): 
     case "stop":
       return `stop:${o.route}:${o.t}`;
     case "yard":
-      return `yard:${o.id || ""}:${o.face}`;
+      return `yard:${o.id === 0 ? "" : o.id}:${o.face}`;
     default:
       return `${o.kind}:${o.id}`;
   }

@@ -47,15 +47,18 @@ data rather than render-loop branches. The yard and Mimic specs are also consume
 saved-object validation, so adding or removing one does not require updating three separate counts.
 
 Runtime movement is registered through `src/client/motion.ts`. A moving object owns a stable motion
-id and an update callback; removing a dynamic object removes the callback with the same id. The
-render loop advances one shared clock instead of knowing how every train, cutaway carriage, or cargo
-object moves.
+id and an update callback; removing a dynamic object removes the callback with the same id. Dynamic
+scene resources are owned through `src/client/runtime_objects.ts`: each logical `IronObject`
+identity can register one runtime handle whose disposer tears down its meshes, instances, and motion
+registrations together. Replacing an object preserves its stable identity while swapping owned
+resources. The render loop advances one shared clock instead of knowing how every train, cutaway
+carriage, or cargo object moves.
 
 The renderer keeps lifecycle, selection, camera, and render-loop orchestration in `model.ts`.
 Reusable renderer concerns live under `src/client/model/`: numerical helpers in `math.ts`, Babylon
-primitive builders in `meshes.ts`, palette/material lifecycle in `theme.ts`, and inferred ring/station
-geometry in `topology.ts`. Keep identity, placement parameters, and tunable movement parameters in
-`scene_specs.ts` so edits remain localized and reviewable.
+primitive builders in `meshes.ts`, palette/material lifecycle in `theme.ts`, and inferred
+ring/station geometry in `topology.ts`. Keep identity, placement parameters, and tunable movement
+parameters in `scene_specs.ts` so edits remain localized and reviewable.
 
 Babylon uses its typed ES module package, resolved by Deno's import map:
 

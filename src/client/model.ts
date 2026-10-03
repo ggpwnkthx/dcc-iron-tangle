@@ -9,6 +9,8 @@ import {
 } from "./canon.ts";
 import { context2D, element, query, required, rootElement } from "./dom.ts";
 import { MotionRegistry, wrap } from "./motion.ts";
+import { objectRouteId } from "./objects.ts";
+import { RuntimeObjectRegistry } from "./runtime_objects.ts";
 import { CUTAWAY_MOTION, MIMIC_SPECS, trainMotion } from "./scene_specs.ts";
 import { createMeshBuilders } from "./model/meshes.ts";
 import { clamp, hash, lineSample, mix, stationT, TAU } from "./model/math.ts";
@@ -128,6 +130,9 @@ export function createModel(ui: UI) {
     screenTargets: ScreenTarget[] = [],
     labelTargets: LabelTarget[] = [];
   const motions = new MotionRegistry();
+  const runtimeObjects = new RuntimeObjectRegistry((change, object) => {
+    root.dispatchEvent(new CustomEvent("iron:objects-changed", { detail: { change, object } }));
+  });
   function requestRender() {
     needsRender = 3;
   }
@@ -579,7 +584,7 @@ export function createModel(ui: UI) {
   const carCopies = [];
   for (const spec of yardSpecs) {
     const i = spec.id;
-    for (const sign of [1, -1]) {
+    for (const sign of [1, -1] as const) {
       const base = yardBase(i).add(new V(0, sign * 1.15, 0)), parent = sign === 1 ? upper : lower;
       const yard = new B.TransformNode(
         "Trainyard " + (sign === 1 ? spec.label : "opposite " + spec.label),
@@ -931,6 +936,14 @@ export function createModel(ui: UI) {
     // New inferred routes can be created after animation has already run.
     // Pose immediately at the shared clock instead of flashing at the origin.
     poseTrain(train, motions.elapsed);
+    return () => {
+      motions.remove("train:" + r.id);
+      const index = trains.findIndex((candidate) => candidate === train);
+      if (index !== -1) {
+        train.cars.forEach((car) => car.dispose());
+        trains.splice(index, 1);
+      }
+    };
   }
   Object.values(namedRoutes).forEach((r) => registerTrain(r, true));
   ["escape", "homeward"].forEach((id) => {
@@ -1400,19 +1413,12 @@ export function createModel(ui: UI) {
     }
     if (value.startsWith("unmapped-") && inferredRoute?.id !== value) {
       if (inferredRoute) {
-        required(inferredRoute.mesh).dispose();
-        required(inferredRoute.counterpart).dispose();
-        required(inferredRoute.hidden).dispose();
-        motions.remove("train:" + inferredRoute.id);
-        const index = trains.findIndex((t) => t.r === inferredRoute);
-        if (index !== -1) {
-          required(trains[index]).cars.forEach((c) => c.dispose());
-          trains.splice(index, 1);
-        }
+        runtimeObjects.remove({ kind: "route", id: inferredRoute.id });
+        inferredRoute = null;
       }
       const match = value.match(/^unmapped-(\d+)-(-?1)$/);
       if (!match) return;
-      const i = Number(match[1]), face = Number(match[2]);
+      const i = Number(match[1]), face: 1 | -1 = Number(match[2]) === 1 ? 1 : -1;
       inferredRoute = {
         ...routeDefaults(),
         id: value,
@@ -1453,7 +1459,17 @@ export function createModel(ui: UI) {
       inferredRoute.spacing = 1.9;
       inferredRoute.prototype = required(subwayCar);
       inferredRoute.loop = false;
-      registerTrain(inferredRoute);
+      const disposeTrain = registerTrain(inferredRoute);
+      const runtimeRoute = inferredRoute;
+      runtimeObjects.add({
+        object: { kind: "route", id: runtimeRoute.id },
+        dispose() {
+          disposeTrain();
+          required(runtimeRoute.mesh).dispose();
+          required(runtimeRoute.counterpart).dispose();
+          required(runtimeRoute.hidden).dispose();
+        },
+      });
       const old = $("it-unmapped");
       if (old) old.remove();
       const option = document.createElement("option");
@@ -1531,9 +1547,11 @@ export function createModel(ui: UI) {
         cutaway: "Paired tunnel cutaway",
       }[o.id];
     }
-    const r = knownRoutes.find((r) => r.id === (o.route || o.id)) ||
-      namedRoutes[String(o.route || o.id)] ||
-      inferredRoute;
+    const routeId = objectRouteId(o);
+    const r = routeId
+      ? knownRoutes.find((route) => route.id === routeId) || namedRoutes[routeId] ||
+        (inferredRoute?.id === routeId ? inferredRoute : null)
+      : null;
     return (r?.name || "Unknown line") +
       (o.kind === "station"
         ? " " + o.n
@@ -1567,7 +1585,7 @@ export function createModel(ui: UI) {
       };
     }
     if (o.kind === "yard") {
-      const y = yards.find((y) => y.id === o.id && y.sign === (o.face || 1));
+      const y = yards.find((y) => y.id === o.id && y.sign === o.face);
       return { point: required(y).base, parent: required(y).parent, radius: 42, scale: 3 };
     }
     if (o.kind === "mimic") {
@@ -1669,8 +1687,8 @@ export function createModel(ui: UI) {
       chooseLine(route, false, false);
       if (numberedLine()) inspectStation(n.n, false, false);
     } else if (o.kind === "train" || o.kind === "stop") {
-      const id = String(o.route || o.id);
-      if (!trains.some((t) => t.r.id === id)) return;
+      const id = objectRouteId(o);
+      if (!id || !trains.some((t) => t.r.id === id)) return;
       chooseLine(id, false, false);
     } else {
       selected = "all";
@@ -1742,7 +1760,9 @@ export function createModel(ui: UI) {
   }
   function targetFromMetadata(md: PickMetadata): IronObject | null {
     if (md.node) return { kind: "node", id: md.node };
-    if (md.yard !== undefined) return { kind: "yard", id: md.yard, face: Number(md.face ?? 1) };
+    if (md.yard !== undefined) {
+      return { kind: "yard", id: md.yard, face: Number(md.face ?? 1) === -1 ? -1 : 1 };
+    }
     if (md.mimic) return { kind: "mimic", id: md.mimic };
     if (md.landmark || md.abyss) return { kind: "landmark", id: md.landmark || "abyss" };
     if (md.route) {
@@ -2212,6 +2232,9 @@ export function createModel(ui: UI) {
       return palette;
     },
     routeColor,
+    get runtimeObjects() {
+      return Array.from(runtimeObjects.values(), (runtime) => ({ ...runtime.object }));
+    },
     requestRender,
     updateTheme,
     get state() {

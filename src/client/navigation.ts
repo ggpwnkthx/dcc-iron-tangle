@@ -3,7 +3,7 @@ import {
   PRIMARY_STAIRWELL_STATIONS,
   stationCanonRole,
 } from "./canon.ts";
-import { objectKey as key, parseObject } from "./objects.ts";
+import { objectKey as key, objectRouteId, parseObject } from "./objects.ts";
 import { element, query, required, rootElement } from "./dom.ts";
 import { MIMIC_SPECS, YARD_SPECS } from "./scene_specs.ts";
 /* Object discovery, saved places, recent selections, and connected stops. */
@@ -72,7 +72,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     nodes: new Set(Object.keys(model.nodes)),
   };
   function titleOf(o: IronObject) {
-    const unmapped = String(o.route || o.id || "").match(/^unmapped-(\d+)-(-?1)$/);
+    const unmapped = objectRouteId(o)?.match(/^unmapped-(\d+)-(-?1)$/);
     return unmapped
       ? "Unmapped line " + (Number(unmapped[1]) * 2 + (unmapped[2] === "1" ? 1 : 2)) +
         (o.kind === "station" ? " " + o.n : "")
@@ -92,115 +92,124 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
   function add(object: IronObject, group: Group, meta: string, aliases = "", rank = 100) {
     catalog.push(entry(object, group, meta, aliases, rank));
   }
-  add(
-    { kind: "landmark", id: "logo" },
-    "landmarks",
-    "Named circuits · interpreted unequal rings",
-    "syndicate logo symbol emblem wormhole galaxy rings overhead",
-    -2,
-  );
-  add(
-    { kind: "landmark", id: "abyss" },
-    "landmarks",
-    "Abyss cutaway",
-    "436 central abyss engine cars galaxy center",
-    0,
-  );
-  add(
-    { kind: "landmark", id: "cutaway" },
-    "landmarks",
-    "Opposing gravity and hidden conveyor",
-    "tunnel passage cross section",
-    4,
-  );
-  add(
-    { kind: "landmark", id: "wreckage" },
-    "landmarks",
-    "Reconstructed wreckage below the Abyss",
-    "cars carriages scrap abyss",
-    15,
-  );
-  add(
-    { kind: "landmark", id: "portals" },
-    "landmarks",
-    "Reconstructed portal placement",
-    "engine locomotive return abyss",
-    16,
-  );
-  Object.entries(model.nodes).forEach(([id, n]) => {
-    const special = id === "security75"
-      ? "Downward Dog · security / repair"
-      : id === "employee60"
-      ? "Employee hub · staff access"
-      : id === "abyss436"
-      ? "Nightmare Express · Abyss station"
-      : "Documented connection · inferred position";
+  function rebuildCatalog() {
+    catalog.length = 0;
     add(
-      { kind: "node", id },
+      { kind: "landmark", id: "logo" },
+      "landmarks",
+      "Named circuits · interpreted unequal rings",
+      "syndicate logo symbol emblem wormhole galaxy rings overhead",
+      -2,
+    );
+    add(
+      { kind: "landmark", id: "abyss" },
+      "landmarks",
+      "Abyss cutaway",
+      "436 central abyss engine cars galaxy center",
+      0,
+    );
+    add(
+      { kind: "landmark", id: "cutaway" },
+      "landmarks",
+      "Opposing gravity and hidden conveyor",
+      "tunnel passage cross section",
+      4,
+    );
+    add(
+      { kind: "landmark", id: "wreckage" },
+      "landmarks",
+      "Reconstructed wreckage below the Abyss",
+      "cars carriages scrap abyss",
+      15,
+    );
+    add(
+      { kind: "landmark", id: "portals" },
+      "landmarks",
+      "Reconstructed portal placement",
+      "engine locomotive return abyss",
+      16,
+    );
+    Object.entries(model.nodes).forEach(([id, n]) => {
+      const special = id === "security75"
+        ? "Downward Dog · security / repair"
+        : id === "employee60"
+        ? "Employee hub · staff access"
+        : id === "abyss436"
+        ? "Nightmare Express · Abyss station"
+        : "Documented connection · inferred position";
+      add(
+        { kind: "node", id },
+        "stations",
+        special,
+        n.lines.join(" "),
+        id === "red83" ? 2 : id === "employee60" ? 5 : id === "security75" ? 6 : 20 + n.priority,
+      );
+    });
+    Object.values(model.namedRoutes).forEach((r) =>
+      add(
+        { kind: "train", id: r.id },
+        "trains",
+        "Locate leading vehicle",
+        r.stops.map((s) => s[0]).join(" "),
+        r.id === "nightmare" ? 1 : 12,
+      )
+    );
+    model.knownRoutes.forEach((r) =>
+      add(
+        { kind: "route", id: r.id },
+        "lines",
+        "One-way subway · inferred ring path",
+        r.namedNodes.map((n) => n.label).join(" "),
+        60,
+      )
+    );
+    YARD_SPECS.forEach(({ id, label, named }) => {
+      add(
+        { kind: "yard", id, face: 1 },
+        "yards",
+        named ? "Named yard · reconstructed position" : "Unidentified yard · inferred",
+        label === "E" ? "Homeward Bound staff service" : "",
+        id === 3 ? 3 : 70 + id,
+      );
+      add(
+        { kind: "yard", id, face: -1 },
+        "yards",
+        "Opposing identity and pairing inferred",
+        "trainyard " + label + " inverted",
+        90 + id,
+      );
+    });
+    MIMIC_SPECS.forEach(({ id }) => {
+      add(
+        { kind: "mimic", id },
+        "bosses",
+        "Terminus 433 · hidden stairwell revealed after Mimic removal · placement inferred",
+        "station mimic boss terminus 433 hidden stairwell saferoom",
+        id === 1 ? 7 : 80 + id,
+      );
+    });
+    add(
+      { kind: "stop", route: "escape", t: 0, label: "24 · Escape Velocity III / stairwell hub" },
       "stations",
-      special,
-      n.lines.join(" "),
-      id === "red83" ? 2 : id === "employee60" ? 5 : id === "security75" ? 6 : 20 + n.priority,
-    );
-  });
-  Object.values(model.namedRoutes).forEach((r) =>
-    add(
-      { kind: "train", id: r.id },
-      "trains",
-      "Locate leading vehicle",
-      r.stops.map((s) => s[0]).join(" "),
-      r.id === "nightmare" ? 1 : 12,
-    )
-  );
-  model.knownRoutes.forEach((r) =>
-    add(
-      { kind: "route", id: r.id },
-      "lines",
-      "One-way subway · inferred ring path",
-      r.namedNodes.map((n) => n.label).join(" "),
-      60,
-    )
-  );
-  YARD_SPECS.forEach(({ id, label, named }) => {
-    add(
-      { kind: "yard", id, face: 1 },
-      "yards",
-      named ? "Named yard · reconstructed position" : "Unidentified yard · inferred",
-      label === "E" ? "Homeward Bound staff service" : "",
-      id === 3 ? 3 : 70 + id,
+      "5 stairwells · 10 platform exits · documented hub; service geometry inferred",
+      "escape velocity escape velocity iii stairwell stairs station 24",
+      35,
     );
     add(
-      { kind: "yard", id, face: -1 },
-      "yards",
-      "Opposing identity and pairing inferred",
-      "trainyard " + label + " inverted",
-      90 + id,
+      { kind: "stop", route: "homeward", t: .4, label: "24 · staff access" },
+      "stations",
+      "Homeward Bound · representative staff access toward station 60",
+      "homeward bound stairs staff 24",
+      36,
     );
-  });
-  MIMIC_SPECS.forEach(({ id }) => {
-    add(
-      { kind: "mimic", id },
-      "bosses",
-      "Terminus 433 · hidden stairwell revealed after Mimic removal · placement inferred",
-      "station mimic boss terminus 433 hidden stairwell saferoom",
-      id === 1 ? 7 : 80 + id,
-    );
-  });
-  add(
-    { kind: "stop", route: "escape", t: 0, label: "24 · Escape Velocity III / stairwell hub" },
-    "stations",
-    "5 stairwells · 10 platform exits · documented hub; service geometry inferred",
-    "escape velocity escape velocity iii stairwell stairs station 24",
-    35,
-  );
-  add(
-    { kind: "stop", route: "homeward", t: .4, label: "24 · staff access" },
-    "stations",
-    "Homeward Bound · representative staff access toward station 60",
-    "homeward bound stairs staff 24",
-    36,
-  );
-  catalog.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
+
+    model.runtimeObjects.forEach((object) => {
+      if (!catalog.some((candidate) => candidate.key === key(object))) {
+        catalog.push(entryFor(object));
+      }
+    });
+    catalog.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
+  }
 
   function dynamicStation(query: string) {
     const number = query.match(/(?:^|\s)(\d{1,3})(?:$|\s)/);
@@ -257,6 +266,8 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
         : "Selected in the scene · reconstructed",
     );
   }
+  rebuildCatalog();
+
   function restoreObjects(name: string) {
     const stored = ui.readStore(name, []);
     return Array.isArray(stored)
@@ -268,7 +279,9 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
   const favorites = new Map(restoreObjects("favorites").map((o) => [key(o), o]));
   let recent = restoreObjects("recent").slice(0, 20);
   function routeColor(object: IronObject) {
-    const route = object.route || object.id, known = model.knownRoutes.find((r) => r.id === route);
+    const route = objectRouteId(object);
+    if (!route) return null;
+    const known = model.knownRoutes.find((r) => r.id === route);
     if (known) return model.routeColor(known.i).toHexString();
     const colors: Record<string, string> = {
       nightmare: "var(--purple)",
@@ -525,7 +538,8 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
         ? []
         : [{ kind: "landmark", id: "abyss" }];
     }
-    const id = String(o.route || o.id);
+    const id = objectRouteId(o);
+    if (!id) return [];
     if (o.kind === "stop") return [{ kind: "route", id }];
     if (o.kind === "route" || o.kind === "train" || o.kind === "station") {
       if (model.namedRoutes[id]) {
@@ -665,6 +679,10 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     "iron:selection",
     (event) => updateSelection((event as CustomEvent<IronObject>).detail),
   );
+  root.addEventListener("iron:objects-changed", () => {
+    rebuildCatalog();
+    renderResults();
+  });
   search.addEventListener("input", () => renderResults(true));
   category.addEventListener("change", () => renderResults(true));
   document.querySelectorAll<HTMLButtonElement>("[data-category]").forEach((button) =>

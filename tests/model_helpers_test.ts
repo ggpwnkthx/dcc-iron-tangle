@@ -2,6 +2,7 @@ import { assert, equal } from "./assert.ts";
 import { clamp, hash, stationT } from "../src/client/model/math.ts";
 import {
   logoRings,
+  nightmarePoint,
   nodes,
   ringJunctions,
   yardSpec,
@@ -23,5 +24,6 @@ Deno.test("topology module exposes authored rings, yards, and station graph", ()
   equal(yardSpecs.length, 12);
   equal(yardSpec(3).label, "E");
   equal(nodes.abyss436?.n, 436);
+  equal(nightmarePoint(.25).y, 33);
   assert(ringJunctions.length > 0);
 });

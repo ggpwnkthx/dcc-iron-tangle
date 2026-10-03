@@ -202,7 +202,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       "homeward bound stairs staff 24",
       36,
     );
-  
+
     model.runtimeObjects.forEach((object) => {
       if (!catalog.some((candidate) => candidate.key === key(object))) {
         catalog.push(entryFor(object));

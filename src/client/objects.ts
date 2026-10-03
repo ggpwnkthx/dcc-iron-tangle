@@ -1,4 +1,5 @@
 import type { IronObject, LandmarkId } from "./types.ts";
+import { MIMIC_SPECS, YARD_SPECS } from "./scene_specs.ts";
 
 export interface ObjectRegistry {
   routes: ReadonlySet<string>;
@@ -7,6 +8,8 @@ export interface ObjectRegistry {
 }
 
 const landmarks = new Set<LandmarkId>(["logo", "abyss", "cutaway", "wreckage", "portals"]);
+const yardIds = new Set(YARD_SPECS.map((spec) => spec.id));
+const mimicIds = new Set(MIMIC_SPECS.map((spec) => spec.id));
 
 /** Validate persisted JSON and construct a clean object with only the relevant fields. */
 export function parseObject(value: unknown, registry: ObjectRegistry): IronObject | null {
@@ -41,12 +44,12 @@ export function parseObject(value: unknown, registry: ObjectRegistry): IronObjec
         ? { kind: "stop", route: o.route, t: o.t, label: o.label }
         : null;
     case "yard":
-      return typeof o.id === "number" && Number.isInteger(o.id) && o.id >= 0 && o.id < 12 &&
+      return typeof o.id === "number" && Number.isInteger(o.id) && yardIds.has(o.id) &&
           (o.face === 1 || o.face === -1)
         ? { kind: "yard", id: o.id, face: o.face }
         : null;
     case "mimic":
-      return typeof o.id === "number" && Number.isInteger(o.id) && o.id >= 1 && o.id <= 6
+      return typeof o.id === "number" && Number.isInteger(o.id) && mimicIds.has(o.id)
         ? { kind: "mimic", id: o.id }
         : null;
     case "landmark":

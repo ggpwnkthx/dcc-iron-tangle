@@ -76,6 +76,7 @@ export interface Train {
   r: Route;
   cars: B.InstancedMesh[];
   base: number;
+  speed: number;
 }
 export interface Yard {
   id: number;

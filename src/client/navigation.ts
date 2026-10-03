@@ -5,6 +5,7 @@ import {
 } from "./canon.ts";
 import { objectKey as key, parseObject } from "./objects.ts";
 import { element, query, required, rootElement } from "./dom.ts";
+import { MIMIC_SPECS, YARD_SPECS } from "./scene_specs.ts";
 /* Object discovery, saved places, recent selections, and connected stops. */
 import type { Model } from "./model.ts";
 import type { UI } from "./interface.ts";
@@ -57,7 +58,6 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       words.some((w) => /^\d+$/.test(t) || t.length === 1 ? w === t : w.startsWith(t))
     );
   };
-  const yards = ["B", "C", "D", "E", "F", "H", "M", "Q", "?1", "?2", "?3", "?4"];
   const catalog: CatalogEntry[] = [];
   let results: CatalogEntry[] = [],
     collection = "all",
@@ -161,23 +161,23 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       60,
     )
   );
-  yards.forEach((letter, id) => {
+  YARD_SPECS.forEach(({ id, label, named }) => {
     add(
       { kind: "yard", id, face: 1 },
       "yards",
-      id < 8 ? "Named yard · reconstructed position" : "Unidentified yard · inferred",
-      letter === "E" ? "Homeward Bound staff service" : "",
+      named ? "Named yard · reconstructed position" : "Unidentified yard · inferred",
+      label === "E" ? "Homeward Bound staff service" : "",
       id === 3 ? 3 : 70 + id,
     );
     add(
       { kind: "yard", id, face: -1 },
       "yards",
       "Opposing identity and pairing inferred",
-      "trainyard " + letter + " inverted",
+      "trainyard " + label + " inverted",
       90 + id,
     );
   });
-  for (let id = 1; id <= 6; id++) {
+  MIMIC_SPECS.forEach(({ id }) => {
     add(
       { kind: "mimic", id },
       "bosses",
@@ -185,7 +185,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       "station mimic boss terminus 433 hidden stairwell saferoom",
       id === 1 ? 7 : 80 + id,
     );
-  }
+  });
   add(
     { kind: "stop", route: "escape", t: 0, label: "24 · Escape Velocity III / stairwell hub" },
     "stations",

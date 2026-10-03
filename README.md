@@ -39,6 +39,22 @@ discriminated selection objects, routes, trains, DOM access, navigation, storage
 controls. There are no handwritten application JavaScript files in `public/`; `app.js` is generated.
 HTML and CSS remain their native formats.
 
+### Scene authoring
+
+Frequently edited scene definitions live in `src/client/scene_specs.ts`. Yard identities and
+placement, Station Mimic placement, ring geometry, cutaway movement, and train movement defaults are
+data rather than render-loop branches. The yard and Mimic specs are also consumed by navigation and
+saved-object validation, so adding or removing one does not require updating three separate counts.
+
+Runtime movement is registered through `src/client/motion.ts`. A moving object owns a stable motion
+id and an update callback; removing a dynamic object removes the callback with the same id. The
+render loop advances one shared clock instead of knowing how every train, cutaway carriage, or cargo
+object moves.
+
+Keep mesh-building code in `model.ts` when an object needs Babylon-specific construction. Put the
+identity, placement parameters, and tunable movement parameters in `scene_specs.ts` so edits remain
+localized and reviewable.
+
 Babylon uses its typed ES module package, resolved by Deno's import map:
 
 ```json

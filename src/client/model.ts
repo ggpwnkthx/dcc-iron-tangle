@@ -8,6 +8,8 @@ import {
   stationCanonRole,
 } from "./canon.ts";
 import { context2D, element, query, required, rootElement } from "./dom.ts";
+import { MotionRegistry, wrap } from "./motion.ts";
+import { CUTAWAY_MOTION, LOGO_RINGS, MIMIC_SPECS, trainMotion, YARD_SPECS } from "./scene_specs.ts";
 import * as B from "@babylonjs/core";
 import type { UI } from "./interface.ts";
 import type {
@@ -131,7 +133,6 @@ export function createModel(ui: UI) {
   let selected = "all",
     selectedStation: number | null = null,
     playing = false,
-    time = 0,
     lastTime = performance.now(),
     currentView: View = "whole";
   let cameraTween: CameraTween | null = null,
@@ -143,6 +144,7 @@ export function createModel(ui: UI) {
     hoveredObject: IronObject | null = null,
     screenTargets: ScreenTarget[] = [],
     labelTargets: LabelTarget[] = [];
+  const motions = new MotionRegistry();
   function requestRender() {
     needsRender = 3;
   }
@@ -338,31 +340,10 @@ export function createModel(ui: UI) {
   // bundle is still an inference, but it is a book-supported heuristic and is preferable to the
   // previous arbitrary nine-line grouping.
   const modeledHubPlatformCount = STATION_24_PLATFORM_EXITS;
-  const yardLetters = ["B", "C", "D", "E", "F", "H", "M", "Q", "?1", "?2", "?3", "?4"];
-  // Chapter 30: the named circuits reveal unequal, overlapping rings from above.
-  // These four loop families, their dimensions and their 3D weaving are an
-  // interpretation, not a recovered official emblem or a canonical ring count.
-  // Ordinary rails follow the same families before terminating at the Abyss.
-  const logoRings = [
-    { name: "Nightmare · western lobe", x: -62, z: 0, radius: 62, y: 18, lift: 13, phase: .3 },
-    { name: "Nightmare · eastern lobe", x: 78, z: 0, radius: 78, y: 15, lift: 17, phase: 1.8 },
-    { name: "Dismemberment circuit", x: -30, z: -38, radius: 64, y: 5, lift: 19, phase: .7 },
-    { name: "Eviscerator circuit", x: 36, z: 37, radius: 50, y: 12, lift: 15, phase: 2.4 },
-  ];
-  const yardSpecs = [
-    { ring: 0, angle: Math.PI, direction: 1 },
-    { ring: 1, angle: -Math.PI / 2, direction: 1 },
-    { ring: 2, angle: -Math.PI / 2, direction: -1 },
-    { ring: 3, angle: Math.PI / 2, direction: -1 },
-    { ring: 0, angle: Math.PI / 2, direction: -1 },
-    { ring: 1, angle: 0, direction: 1 },
-    { ring: 2, angle: Math.PI, direction: 1 },
-    { ring: 3, angle: 0, direction: -1 },
-    { ring: 0, angle: -Math.PI / 2, direction: 1 },
-    { ring: 1, angle: Math.PI / 2, direction: -1 },
-    { ring: 2, angle: 0, direction: 1 },
-    { ring: 3, angle: Math.PI, direction: -1 },
-  ];
+  const logoRings = LOGO_RINGS, yardSpecs = YARD_SPECS;
+  function yardSpec(id: number) {
+    return required(yardSpecs.find((spec) => spec.id === id));
+  }
   function ringPoint(index: number, a: number) {
     const r = logoRings[index];
     return new V(
@@ -371,13 +352,13 @@ export function createModel(ui: UI) {
       required(r).z + required(r).radius * Math.sin(a),
     );
   }
-  function yardBase(j: number) {
-    const s = yardSpecs[j];
+  function yardBase(id: number) {
+    const s = yardSpec(id);
     return ringPoint(required(s).ring, required(s).angle);
   }
   function axisBase(i: number, t: number) {
     const g = Math.floor(i / modeledHubPlatformCount),
-      s = yardSpecs[g % 12],
+      s = yardSpecs[g % yardSpecs.length],
       r = logoRings[required(s).ring],
       loopEnd = .86;
     const innerAngle = Math.atan2(-required(r).z, -required(r).x);
@@ -712,7 +693,7 @@ export function createModel(ui: UI) {
   }
   const knownRoutes: Route[] = colorDefinitions.map((d, i) => {
     const namedNodes = Object.values(nodes).filter((n) => n.lines.includes(d[0])),
-      spec = yardSpecs[Math.floor(i / modeledHubPlatformCount) % 12];
+      spec = yardSpecs[Math.floor(i / modeledHubPlatformCount) % yardSpecs.length];
     const anchors: Anchor[] = [10, 12, 24, 36, 48, 60, 72, 180, 340, 410, 433, 435, 436].filter((
       n,
     ) => n <= 72 || !namedNodes.some((k) => Math.abs(k.n - n) < 28)).map((n) => ({
@@ -1069,16 +1050,17 @@ export function createModel(ui: UI) {
   required(locomotive).isVisible = false;
   required(locomotive).isPickable = false;
   const carCopies = [];
-  for (let i = 0; i < 12; i++) {
+  for (const spec of yardSpecs) {
+    const i = spec.id;
     for (const sign of [1, -1]) {
       const base = yardBase(i).add(new V(0, sign * 1.15, 0)), parent = sign === 1 ? upper : lower;
       const yard = new B.TransformNode(
-        "Trainyard " + (sign === 1 ? yardLetters[i] : "opposite " + yardLetters[i]),
+        "Trainyard " + (sign === 1 ? spec.label : "opposite " + spec.label),
         scene,
       );
       yard.parent = parent;
       yard.position = base;
-      yard.rotation.y = -required(yardSpecs[i]).angle - Math.PI / 2;
+      yard.rotation.y = -spec.angle - Math.PI / 2;
       if (sign === -1) yard.rotation.z = Math.PI;
       box("yard deck", 20, .8, 12, new V(0, -.75, 0), steel, yard);
       box("three-story substation", 5, 5.6, 5, new V(6, 2.45, 2.1), darkSteel, yard);
@@ -1137,13 +1119,19 @@ export function createModel(ui: UI) {
       portal.rotation.z = Math.PI / 2;
       const staticParts = yard.getChildMeshes().filter((m) => m instanceof B.Mesh);
       const merged = B.Mesh.MergeMeshes(staticParts, true, true, undefined, false, true);
-      required(merged).name = "Trainyard " + yardLetters[i] + " structure";
+      required(merged).name = "Trainyard " + spec.label + " structure";
       required(merged).parent = parent;
       required(merged).metadata = { yard: i, face: sign };
       const y = { id: i, sign, base, parent, yard, merged: required(merged) };
       yards.push(y);
       if (sign === 1 && i === 3) {
-        labels.push({ text: "Trainyard E", point: base, parent: upper, priority: 3, kind: "yard" });
+        labels.push({
+          text: "Trainyard " + spec.label,
+          point: base,
+          parent: upper,
+          priority: 3,
+          kind: "yard",
+        });
       }
       yard.getChildMeshes().forEach((m) => m.metadata = { yard: i, face: sign });
     }
@@ -1194,13 +1182,14 @@ export function createModel(ui: UI) {
     car.scaling.setAll(1.5);
     car.isPickable = false;
   }
-  for (let i = 0; i < 6; i++) {
-    const sign = i % 2 ? 1 : -1,
+  for (const spec of MIMIC_SPECS) {
+    const sign = spec.face,
       parent = sign === 1 ? upper : lower,
-      p = axis(320 + i * 470, stationT(433)).add(new V(0, sign * 1.15, 0));
-    const boss = new B.TransformNode("Station Mimic " + (i + 1), scene);
+      p = axis(spec.axisIndex, stationT(spec.station)).add(new V(0, sign * 1.15, 0));
+    const boss = new B.TransformNode("Station Mimic " + spec.id, scene);
     boss.parent = parent;
     boss.position = p;
+    boss.metadata = { mimic: spec.id, station: spec.station };
     box("mimic platform", 9, .9, 5, new V(0, sign * .5, 0), bossMat, boss);
     const head = B.MeshBuilder.CreateSphere(
       "Station Mimic mouth",
@@ -1222,7 +1211,7 @@ export function createModel(ui: UI) {
       tooth.material = dismemberMat;
       tooth.parent = boss;
     }
-    boss.getChildMeshes().forEach((m) => m.metadata = { mimic: i + 1, station: 433 });
+    boss.getChildMeshes().forEach((m) => m.metadata = { mimic: spec.id, station: spec.station });
     bosses.push(boss);
   }
   Object.entries(nodes).forEach(([id, n]) => {
@@ -1408,7 +1397,13 @@ export function createModel(ui: UI) {
       car.metadata = { route: r.id, train: true };
       cars.push(car);
     }
-    trains.push({ r, cars, base: r.id === "nightmare" ? r.length * .16 : r.length * .7 });
+    const motion = trainMotion(r.id);
+    const train = { r, cars, base: r.length * motion.startFraction, speed: motion.speed };
+    trains.push(train);
+    motions.register("train:" + r.id, ({ elapsed }) => poseTrain(train, elapsed));
+    // New inferred routes can be created after animation has already run.
+    // Pose immediately at the shared clock instead of flashing at the origin.
+    poseTrain(train, motions.elapsed);
   }
   Object.values(namedRoutes).forEach((r) => registerTrain(r, true));
   ["escape", "homeward"].forEach((id) => {
@@ -1478,7 +1473,7 @@ export function createModel(ui: UI) {
   shellData.applyToMesh(shell);
   shell.material = abyssMat;
   shell.parent = cutaway;
-  const sectionCars: { car: B.InstancedMesh; sign: number; baseX: number }[] = [];
+  const cutawayCars = CUTAWAY_MOTION.cars;
   for (const sign of [1, -1]) {
     box("opposed floor", 33, .3, 7.2, new V(0, sign * 3.15, 0), steel, cutaway);
     for (const z of [-2.4, -1.6, 1.6, 2.4]) {
@@ -1497,13 +1492,18 @@ export function createModel(ui: UI) {
         box("sleeper", .2, .13, 1.2, new V(x, sign * 3, z), darkSteel, cutaway);
       }
     }
-    for (let i = 0; i < 5; i++) {
+    cutawayCars.startXs.forEach((startX, i) => {
       const car = required(subwayCar).createInstance("opposed subway carriage");
       car.parent = cutaway;
-      car.position = new V(-7 + i * 2.05, sign * 2.88, sign === 1 ? -2 : 2);
+      car.position = new V(startX, sign * 2.88, sign === 1 ? -2 : 2);
       if (sign === 1) car.rotation.z = Math.PI;
-      sectionCars.push({ car, sign, baseX: car.position.x });
-    }
+      motions.register(`cutaway:car:${sign}:${i}`, ({ elapsed }) => {
+        car.position.x = wrap(
+          startX + cutawayCars.span / 2 + elapsed * sign * cutawayCars.speed,
+          cutawayCars.span,
+        ) - cutawayCars.span / 2;
+      });
+    });
     box("hidden wall", 33, .22, 6.2, new V(0, sign * 1.0, 0), darkSteel, cutaway);
     box("station passage", 3, .25, 3.4, new V(11, sign * 3.2, 3.7), steel, cutaway);
     const gate = torus("hidden access door", new V(10, sign * 1.9, 3), 2.2, .17, stairMat, cutaway);
@@ -1547,7 +1547,14 @@ export function createModel(ui: UI) {
   );
   worker.material = bossMat;
   worker.parent = cutaway;
-  worker.position = new V(-3, .15, 0);
+  const cargoMotion = CUTAWAY_MOTION.cargo;
+  worker.position = new V(cargoMotion.startX, .15, 0);
+  motions.register("cutaway:cargo", ({ elapsed }) => {
+    worker.position.x = wrap(
+      cargoMotion.startX + cargoMotion.span / 2 + elapsed * cargoMotion.speed,
+      cargoMotion.span,
+    ) - cargoMotion.span / 2;
+  });
   const markerMaterial = material("selection beacon", () => palette.yellow, { emission: .75 });
   const selectedMarker = torus("selected station", new V(0, 0, 0), 5, .24, markerMaterial, upper);
   selectedMarker.setEnabled(false);
@@ -1620,8 +1627,8 @@ export function createModel(ui: UI) {
     }
     if (activeObject?.kind === "mimic") {
       return objectTitle(activeObject) +
-        " · Terminus 433 · one of six city bosses concealing a stairwell that is revealed after " +
-        "the Mimic is removed. This placement and appearance are inferred.";
+        ` · Terminus 433 · one of ${MIMIC_SPECS.length} city bosses concealing a stairwell that ` +
+        "is revealed after the Mimic is removed. This placement and appearance are inferred.";
     }
     if (activeObject?.kind === "landmark" && activeObject.id === "wreckage") {
       return "Discarded carriages below the Abyss · representative wreckage; placement and quantity reconstructed.";
@@ -1778,9 +1785,10 @@ export function createModel(ui: UI) {
       y.yard.setEnabled(visible);
       y.merged.setEnabled(visible);
     });
-    bosses.forEach((b, i) =>
+    bosses.forEach((b) =>
       b.setEnabled(
-        showBulk || localAbyss || activeObject?.kind === "mimic" && activeObject.id === i + 1 ||
+        showBulk || localAbyss ||
+          activeObject?.kind === "mimic" && activeObject.id === b.metadata?.mimic ||
           currentView === "known" && selected === "all" && !activeObject,
       )
     );
@@ -1855,7 +1863,7 @@ export function createModel(ui: UI) {
       ? "Ring arcs · inferred paths and junctions"
       : "Syndicate loop pattern · reconstructed coordinates";
     detail.textContent = stateDetail();
-    trains.forEach((t) => poseTrain(t, time));
+    trains.forEach((t) => poseTrain(t, motions.elapsed));
     requestRender();
   }
   function chooseLine(value: string, focus = true, notify = true) {
@@ -1868,6 +1876,7 @@ export function createModel(ui: UI) {
         required(inferredRoute.mesh).dispose();
         required(inferredRoute.counterpart).dispose();
         required(inferredRoute.hidden).dispose();
+        motions.remove("train:" + inferredRoute.id);
         const index = trains.findIndex((t) => t.r === inferredRoute);
         if (index !== -1) {
           required(trains[index]).cars.forEach((c) => c.dispose());
@@ -1980,9 +1989,10 @@ export function createModel(ui: UI) {
     }
     if (o.kind === "node") return required(nodes[o.id]).label;
     if (o.kind === "yard") {
+      const spec = yardSpec(o.id);
       return o.face === -1
-        ? "Opposing yard of " + yardLetters[o.id] + " (inferred)"
-        : "Trainyard " + yardLetters[o.id] + (o.id >= 8 ? " (inferred)" : "");
+        ? "Opposing yard of " + spec.label + " (inferred)"
+        : "Trainyard " + spec.label + (spec.named ? "" : " (inferred)");
     }
     if (o.kind === "mimic") return "Station Mimic " + o.id;
     if (o.kind === "landmark") {
@@ -2034,7 +2044,7 @@ export function createModel(ui: UI) {
       return { point: required(y).base, parent: required(y).parent, radius: 42, scale: 3 };
     }
     if (o.kind === "mimic") {
-      const b = bosses[o.id - 1];
+      const b = bosses.find((boss) => boss.metadata?.mimic === o.id);
       return {
         point: required(b).position,
         parent: required(required(b).parent) as B.TransformNode,
@@ -2245,7 +2255,7 @@ export function createModel(ui: UI) {
     );
     bosses.filter((b) => b.isEnabled()).forEach((b) =>
       targets.push({
-        object: { kind: "mimic", id: bosses.indexOf(b) + 1 },
+        object: { kind: "mimic", id: Number(b.metadata?.mimic) },
         point: b.position,
         parent: required(b.parent) as B.TransformNode,
       })
@@ -2293,7 +2303,7 @@ export function createModel(ui: UI) {
   }
   function poseTrain(train: Train, t: number) {
     const r = train.r,
-      rawHead = train.base + (r.reverse ? -1 : 1) * t * 4,
+      rawHead = train.base + (r.reverse ? -1 : 1) * t * train.speed,
       head = r.loop
         ? rawHead
         : ((rawHead % (r.length + r.count * r.spacing)) + r.length + r.count * r.spacing) %
@@ -2323,7 +2333,6 @@ export function createModel(ui: UI) {
       car.setEnabled((r.loop || d >= 0 && d <= r.length) && visible);
     });
   }
-  trains.forEach((t) => poseTrain(t, 0));
   function updateTheme() {
     readPalette();
     allMaterials.forEach(({ m, colorFunction, emission, metal }) => {
@@ -2672,9 +2681,9 @@ export function createModel(ui: UI) {
       coloredLines: 6246,
       pairedTunnels: 3123,
       hiddenPassages: 3123,
-      modeledYardDecks: 24,
+      modeledYardDecks: yards.length,
       stairChambers: 3470,
-      stationMimics: 6,
+      stationMimics: bosses.length,
       documentedColors: 23,
       nightmareCars: 40,
     },
@@ -2718,12 +2727,7 @@ export function createModel(ui: UI) {
       if (u === 1) cameraTween = null;
     }
     if (playing) {
-      time += dt;
-      trains.forEach((t) => poseTrain(t, time));
-      sectionCars.forEach(({ car, sign, baseX }) => {
-        car.position.x = ((baseX + 16 + time * sign * 2.5) % 32 + 32) % 32 - 16;
-      });
-      worker.position.x = ((time * 1.7 + 12) % 27) - 13.5;
+      motions.update(dt);
     }
     if (playing && activeObject?.kind === "train") {
       const location = objectLocation(activeObject);

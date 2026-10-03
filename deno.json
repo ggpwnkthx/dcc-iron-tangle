@@ -1,15 +1,15 @@
 {
   "tasks": {
-    "dev": "deno run --no-prompt --allow-run=\"$(deno eval 'console.log(Deno.execPath())')\" scripts/dev.ts",
-    "start": "deno run --no-prompt --allow-read=public --allow-net=127.0.0.1 src/main.ts",
+    "dev": "deno run --no-prompt --allow-read=src/site --allow-write=dist --allow-run=\"$(deno eval 'console.log(Deno.execPath())')\" scripts/dev.ts",
+    "start": "deno run --no-prompt --allow-read=dist --allow-net=127.0.0.1 src/main.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "typecheck": "deno check src/main.ts src/client/main.ts scripts/dev.ts tests/*_test.ts",
-    "test": "deno test --no-prompt --allow-read=public tests",
+    "typecheck": "deno check src/main.ts src/client/main.ts scripts/*.ts tests/*_test.ts",
+    "test": "deno task build && deno test --no-prompt --allow-read=dist tests",
     "check": "deno task fmt:check && deno task lint && deno task typecheck && deno task test",
-    "build": "deno bundle --check --platform=browser --format=iife --minify --output=public/assets/app.js src/client/main.ts",
-    "build:watch": "deno bundle --check --watch --platform=browser --format=iife --output=public/assets/app.js src/client/main.ts"
+    "build": "deno run --no-prompt --allow-read=src/site --allow-write=dist --allow-run=\"$(deno eval 'console.log(Deno.execPath())')\" scripts/build.ts",
+    "build:watch": "deno bundle --check --watch --platform=browser --format=iife --output=dist/assets/app.js src/client/main.ts"
   },
   "compilerOptions": {
     "strict": true,

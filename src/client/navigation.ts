@@ -1,3 +1,8 @@
+import {
+  isPrimaryStairwellStation,
+  PRIMARY_STAIRWELL_STATIONS,
+  stationCanonRole,
+} from "./canon.ts";
 import { objectKey as key, parseObject } from "./objects.ts";
 import { element, query, required, rootElement } from "./dom.ts";
 /* Object discovery, saved places, recent selections, and connected stops. */
@@ -176,22 +181,22 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
     add(
       { kind: "mimic", id },
       "bosses",
-      "Terminus 433 · placement inferred",
-      "station mimic boss terminus 433",
+      "Terminus 433 · hidden stairwell revealed after Mimic removal · placement inferred",
+      "station mimic boss terminus 433 hidden stairwell saferoom",
       id === 1 ? 7 : 80 + id,
     );
   }
   add(
-    { kind: "stop", route: "escape", t: 0, label: "24 · stairwell" },
+    { kind: "stop", route: "escape", t: 0, label: "24 · Escape Velocity III / stairwell hub" },
     "stations",
-    "Escape Velocity · representative access",
-    "escape velocity stairwell stairs 24",
+    "5 stairwells · 10 platform exits · documented hub; service geometry inferred",
+    "escape velocity escape velocity iii stairwell stairs station 24",
     35,
   );
   add(
     { kind: "stop", route: "homeward", t: .4, label: "24 · staff access" },
     "stations",
-    "Homeward Bound · representative access",
+    "Homeward Bound · representative staff access toward station 60",
     "homeward bound stairs staff 24",
     36,
   );
@@ -207,15 +212,9 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       ? model.knownRoutes.find((r) => normalize(r.name) === lineWords)
       : model.knownRoutes.find((r) => r.id === model.state.selected);
     if (!route || route.namedNodes.some((k) => k.n === n)) return null;
-    const role = [12, 24, 36, 48, 72].includes(n)
-      ? "Stairwell · final six hours"
-      : n === 433
-      ? "Terminus · Station Mimic danger"
-      : n === 435
-      ? "Staff exit / trainyard portal"
-      : n === 436
-      ? "Abyss return / disposal"
-      : "Numbered stop · position inferred";
+    const role = n === 75 && route.name === "Vermillion"
+      ? "Repair / security station · Downward Dog"
+      : stationCanonRole(n);
     return entry(
       { kind: "station", route: route.id, n },
       "stations",
@@ -480,7 +479,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
         kind: "stop",
         route: "escape",
         t: 0,
-        label: "24 · stairwell",
+        label: "24 · Escape Velocity III / stairwell hub",
       }],
       homeward: [{ kind: "yard", id: 3, face: 1 }, {
         kind: "stop",
@@ -539,7 +538,11 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
           kind: "node",
           id: required(Object.keys(model.nodes).find((k) => model.nodes[k] === n)),
         })),
-        ...[12, 24, 36, 48, 72].map((n): IronObject => ({ kind: "station", route: id, n })),
+        ...PRIMARY_STAIRWELL_STATIONS.map((n): IronObject => ({
+          kind: "station",
+          route: id,
+          n,
+        })),
       ];
     }
     return [];
@@ -549,7 +552,7 @@ export function createNavigation(initialModel: Model | undefined, ui: UI) {
       return "View " + required(model.namedRoutes[o.id]).name + " route";
     }
     if (o.kind === "train") return "Locate " + model.objectTitle(o);
-    if (o.kind === "station" && [12, 24, 36, 48, 72].includes(o.n)) return "Stairwell " + o.n;
+    if (o.kind === "station" && isPrimaryStairwellStation(o.n)) return "Stairwell " + o.n;
     if (o.kind === "stop") return o.label;
     if (o.kind === "node") {
       const n = model.nodes[o.id];

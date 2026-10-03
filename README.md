@@ -168,6 +168,27 @@ browser and phone details sheet.
 All buttons and inputs also support native Tab navigation. Hidden and covered panels are removed
 from the tab order.
 
+## Canon accuracy notes
+
+> **Book-accuracy boundary:** Floor 4 has **9,375 stairwells**. The viewer's **6,246 rendered rail
+> faces / 3,123 paired visual tunnels** and **24 yard decks** remain fan-derived display-density
+> assumptions; they are not a canonical line, tunnel, or stairwell count.
+
+The reconstruction keeps textual constraints separate from geometry that the novel does not fix:
+
+- Ordinary stairwell stations are **12, 24, 36, 48, and 72**. Station **433** contains a hidden
+  stairwell revealed after the Station Mimic is removed.
+- The documented station-24 hub has **five stairwells and ten platform exits**, including an
+  **Escape Velocity III** platform. Stations **36 and 48** are described as matching station 24.
+- Station **60** provides a selector for **twelve Homeward Bound platforms**. The rendered E-24-60
+  path remains representative; the complete employee network and yard assignments are unknown.
+- Prime-numbered transfer stations are represented as transfer/saferoom locations. Documented
+  Desperado/Vanquisher and Exit-only-cavern rules are annotations, not invented junction geometry.
+
+These constraints live in `src/client/canon.ts` and are covered by `tests/canon_test.ts`. The model
+does not synthesize thousands of stairwell coordinates, exact yard pairings, or missing route
+intersections where the text does not provide them.
+
 ## What is reconstructed
 
 The complete modeled network has **6,246 colored lines in 3,123 paired tunnels**, with 3,123

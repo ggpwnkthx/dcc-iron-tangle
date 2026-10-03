@@ -1,3 +1,12 @@
+import {
+  CANONICAL_STAIRWELL_COUNT,
+  HOMEWARD_BOUND_PLATFORM_COUNT,
+  isPrimaryStairwellStation,
+  PRIMARY_STAIRWELL_STATIONS,
+  STATION_24_PLATFORM_EXITS,
+  STATION_24_STAIRWELLS,
+  stationCanonRole,
+} from "./canon.ts";
 import { context2D, element, query, required, rootElement } from "./dom.ts";
 import * as B from "@babylonjs/core";
 import type { UI } from "./interface.ts";
@@ -80,10 +89,6 @@ export function createModel(ui: UI) {
   };
   bulkRoots.upper.parent = upper;
   bulkRoots.lower.parent = lower;
-  const stairsUpper = new B.TransformNode("upper stairwells", scene);
-  stairsUpper.parent = upper;
-  const stairsLower = new B.TransformNode("inverted stairwells", scene);
-  stairsLower.parent = lower;
   const allMaterials: {
       m: B.StandardMaterial;
       colorFunction: () => B.Color3;
@@ -329,6 +334,10 @@ export function createModel(ui: UI) {
   function stationT(n: number) {
     return n <= 72 ? (n - 10) / 62 * .17 : .17 + (n - 72) / 364 * .83;
   }
+  // Station 24 explicitly has ten platform exits. Reusing that count for every modeled stairwell
+  // bundle is still an inference, but it is a book-supported heuristic and is preferable to the
+  // previous arbitrary nine-line grouping.
+  const modeledHubPlatformCount = STATION_24_PLATFORM_EXITS;
   const yardLetters = ["B", "C", "D", "E", "F", "H", "M", "Q", "?1", "?2", "?3", "?4"];
   // Chapter 30: the named circuits reveal unequal, overlapping rings from above.
   // These four loop families, their dimensions and their 3D weaving are an
@@ -367,7 +376,7 @@ export function createModel(ui: UI) {
     return ringPoint(required(s).ring, required(s).angle);
   }
   function axisBase(i: number, t: number) {
-    const g = Math.floor(i / 9),
+    const g = Math.floor(i / modeledHubPlatformCount),
       s = yardSpecs[g % 12],
       r = logoRings[required(s).ring],
       loopEnd = .86;
@@ -703,14 +712,17 @@ export function createModel(ui: UI) {
   }
   const knownRoutes: Route[] = colorDefinitions.map((d, i) => {
     const namedNodes = Object.values(nodes).filter((n) => n.lines.includes(d[0])),
-      spec = yardSpecs[Math.floor(i / 9) % 12];
+      spec = yardSpecs[Math.floor(i / modeledHubPlatformCount) % 12];
     const anchors: Anchor[] = [10, 12, 24, 36, 48, 60, 72, 180, 340, 410, 433, 435, 436].filter((
       n,
     ) => n <= 72 || !namedNodes.some((k) => Math.abs(k.n - n) < 28)).map((n) => ({
       n,
       t: stationT(n),
       ring: required(spec).ring,
-      p: axisBase(n <= 72 ? Math.floor(i / 9) * 9 : i, stationT(n)).add(new V(0, 1.15, 0)),
+      p: axisBase(
+        n <= 72 ? Math.floor(i / modeledHubPlatformCount) * modeledHubPlatformCount : i,
+        stationT(n),
+      ).add(new V(0, 1.15, 0)),
     }));
     namedNodes.forEach((n) =>
       anchors.push({ n: n.n, t: stationT(n.n), ring: n.ring, p: n.p.clone() })
@@ -808,11 +820,12 @@ export function createModel(ui: UI) {
       return required(knownRoutes[i]).point(t).subtract(new V(0, 1.15, 0));
     }
     let p = axisBase(i, t);
-    for (const n of [12, 24, 36, 48, 72]) {
+    for (const n of PRIMARY_STAIRWELL_STATIONS) {
       const s = stationT(n), distance = Math.abs(t - s), width = .012;
       if (distance < width) {
         const u = 1 - distance / width;
-        p = V.Lerp(p, axisBase(Math.floor(i / 9) * 9, s), u * u * (3 - 2 * u));
+        const base = Math.floor(i / modeledHubPlatformCount) * modeledHubPlatformCount;
+        p = V.Lerp(p, axisBase(base, s), u * u * (3 - 2 * u));
       }
     }
     return p;
@@ -823,7 +836,7 @@ export function createModel(ui: UI) {
       ...new Set([
         ...Array.from({ length: 51 }, (_, i) => i / 50),
         .86,
-        ...[12, 24, 36, 48, 72].map(stationT),
+        ...PRIMARY_STAIRWELL_STATIONS.map(stationT),
       ]),
     ].sort((a, b) => a - b);
     const rings = sampleTs.length - 1, facets = 3, sign = face === "upper" ? 1 : -1;
@@ -922,14 +935,6 @@ export function createModel(ui: UI) {
     opposing.metadata = { route: r.id, counterpart: true };
     r.opposing = opposing;
   });
-  const stairPrototype = B.MeshBuilder.CreateCylinder("stair gate", {
-    diameterTop: .6,
-    diameterBottom: 1.8,
-    height: 1.5,
-    tessellation: 4,
-  }, scene);
-  stairPrototype.material = stairMat;
-  stairPrototype.isVisible = false;
   function instancedMarkers(
     name: string,
     source: B.Mesh,
@@ -952,22 +957,6 @@ export function createModel(ui: UI) {
     mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
     return mesh;
   }
-  const stairPointsUpper = [], stairPointsLower = [];
-  for (let g = 0; g < 347; g++) {
-    for (const n of [12, 24, 36, 48, 72]) {
-      const p = axis(g * 9, stationT(n));
-      stairPointsUpper.push(p.add(new V(0, 1.15, 0)));
-      stairPointsLower.push(p.add(new V(0, -1.15, 0)));
-    }
-  }
-  instancedMarkers("1735 upper stair chambers", stairPrototype, stairPointsUpper, stairsUpper);
-  instancedMarkers(
-    "1735 opposite stair chambers",
-    stairPrototype,
-    stairPointsLower,
-    stairsLower,
-    true,
-  );
   function carPrototype(name: string, bodyMaterial: B.Material, length = 1.8) {
     const parts = [
       box(name + " body", length, .58, .7, new V(0, .48, 0), bodyMaterial, null),
@@ -1345,7 +1334,7 @@ export function createModel(ui: UI) {
       count: 12,
       spacing: 1.9,
       prototype: required(subwayCar),
-      stops: [["89 · Tangerine", 1], ["24 · stairwell", 0]],
+      stops: [["89 · Tangerine", 1], ["24 · Escape Velocity III / stairwell hub", 0]],
       point: (t) => {
         const start = required(knownRoutes[9]).point(stationT(24)),
           r = logoRings[1],
@@ -1363,7 +1352,10 @@ export function createModel(ui: UI) {
       count: 10,
       spacing: 1.9,
       prototype: required(subwayCar),
-      stops: [["Trainyard E", 0], ["24 · staff access", .4], ["60 · employee hub", 1]],
+      stops: [["Trainyard E", 0], ["24 · staff access", .4], [
+        `60 · ${HOMEWARD_BOUND_PLATFORM_COUNT} Homeward Bound platforms`,
+        1,
+      ]],
       point: (t) => {
         return ringPoint(3, Math.PI / 2 - (Math.PI / 2 + Math.PI / 3) * t).add(
           new V(0, 1.15 * (1 - t) + 6 * Math.sin(t * Math.PI), 0),
@@ -1580,14 +1572,14 @@ export function createModel(ui: UI) {
       parent,
     );
     selectedStationMeshes.push(marks);
-    for (const n of [12, 24, 36, 48, 60, 72, 75, 83, 89, 433, 435, 436]) {
+    for (const n of [...PRIMARY_STAIRWELL_STATIONS, 60, 75, 83, 89, 433, 435, 436]) {
       const p = r.point(stationT(n)),
         special = torus(
           "station " + n,
           p,
           n === 433 ? 2.8 : 1.7,
           .15,
-          [12, 24, 36, 48, 72].includes(n) ? stairMat : n >= 433 ? bossMat : steel,
+          isPrimaryStairwellStation(n) ? stairMat : n >= 433 ? bossMat : steel,
           parent,
         );
       special.metadata = { number: n, route: r.id };
@@ -1613,7 +1605,8 @@ export function createModel(ui: UI) {
       return required(n).label + " · " + (required(n).n === 75
         ? "repair carts, security, and the Downward Dog"
         : required(n).n === 60
-        ? "abandoned employee housing and staff access"
+        ? `abandoned employee housing; selector for ${HOMEWARD_BOUND_PLATFORM_COUNT} ` +
+          "Homeward Bound platforms"
         : required(n).n === 436
         ? "engine returns by portal; discarded cars fall into the Abyss"
         : "documented station connection") +
@@ -1627,7 +1620,8 @@ export function createModel(ui: UI) {
     }
     if (activeObject?.kind === "mimic") {
       return objectTitle(activeObject) +
-        " · Terminus 433 · one of six city bosses. This placement and appearance are inferred.";
+        " · Terminus 433 · one of six city bosses concealing a stairwell that is revealed after " +
+        "the Mimic is removed. This placement and appearance are inferred.";
     }
     if (activeObject?.kind === "landmark" && activeObject.id === "wreckage") {
       return "Discarded carriages below the Abyss · representative wreckage; placement and quantity reconstructed.";
@@ -1646,23 +1640,11 @@ export function createModel(ui: UI) {
     if (selectedStation !== null && numberedLine()) {
       const r = selectedRoute(), n = selectedStation;
       const at = required(r).namedNodes.find((k) => k.n === n);
-      const role = [12, 24, 36, 48, 72].includes(n)
-        ? "stairwell · opens during the final six hours"
-        : n === 60
-        ? "employee hub"
-        : n === 75
+      const role = n === 75
         ? (required(r).name === "Vermillion"
           ? "repair / security station"
           : "repair hub · this line’s platform is unconfirmed")
-        : n === 433
-        ? "Terminus · Station Mimic danger"
-        : n === 435
-        ? "staff exit / trainyard portal"
-        : n === 436
-        ? "engine returns by portal; cars fall into the Abyss"
-        : isPrime(n)
-        ? "prime-numbered transfer / safe-room station"
-        : "modeled subway stop";
+        : stationCanonRole(n);
       return required(r).name + " " + n + " · " + (at ? at.label.split(" · ")[1] + " · " : "") +
         role +
         (at ? "" : " · position inferred");
@@ -1677,10 +1659,15 @@ export function createModel(ui: UI) {
       return "Eviscerator · Cobalt 271 is a documented stop. The remaining circuit and appearance are reconstructed.";
     }
     if (selected === "escape") {
-      return "Escape Velocity · reverse service toward stairwells; Tangerine 89 is a known connection. This representative route is inferred.";
+      return `Escape Velocity · the station-24 platform is specifically Escape Velocity III, in a ` +
+        `${STATION_24_STAIRWELLS}-stairwell / ${STATION_24_PLATFORM_EXITS}-platform hub. ` +
+        "Tangerine 89 is a known Escape Velocity connection; assigning both points to this one " +
+        "representative path remains inferred.";
     }
     if (selected === "homeward") {
-      return "Homeward Bound · staff service linking trainyards and the low-numbered employee area. This representative E–24–60 route is reconstructed.";
+      return `Homeward Bound · station 60 has a selector for ${HOMEWARD_BOUND_PLATFORM_COUNT} ` +
+        "Homeward Bound platforms. This E–24–60 path represents one staff service; the complete " +
+        "employee network and yard-to-platform assignments are not reconstructed as canon.";
     }
     if (numberedLine()) {
       const r = selectedRoute();
@@ -1699,12 +1686,9 @@ export function createModel(ui: UI) {
     if (currentView === "known") {
       return "Colored routes follow the Syndicate ring arcs and switch rings at inferred intersections. Faint guides show the loop backbone. Recorded stops are retained; the paths, junctions, and positions are reconstructed.";
     }
-    return "Syndicate ring pattern · 6,246 modeled lines in 3,123 paired tunnels and 24 yard decks. Counts are fan estimates; ring arrangement, coordinates, and unnamed connections are inferred.";
-  }
-  function isPrime(n: number) {
-    if (n < 2) return false;
-    for (let k = 2; k * k <= n; k++) if (n % k === 0) return false;
-    return true;
+    return `Syndicate ring pattern · ${CANONICAL_STAIRWELL_COUNT.toLocaleString()} canonical ` +
+      "stairwells. The 6,246 rendered rail faces / 3,123 paired visual tunnels and 24 yard " +
+      "decks are fan-density estimates, not a derived canonical network count.";
   }
   function cameraAspectScale() {
     return Math.max(
@@ -1767,9 +1751,6 @@ export function createModel(ui: UI) {
     bulkRoots.upper.setEnabled(showBulk);
     bulkRoots.lower.setEnabled(showBulk);
     ringGuides.setEnabled(currentView === "known" && activeObject?.kind !== "mimic");
-    const showStairs = ["whole", "top"].includes(currentView);
-    stairsUpper.setEnabled(showStairs);
-    stairsLower.setEnabled(showStairs);
     middle.setEnabled(!section && !logo && Number(splitControl.value) > 4);
     routeMeshes.forEach((m) =>
       m.setEnabled(

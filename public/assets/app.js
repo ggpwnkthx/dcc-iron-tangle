@@ -130126,6 +130126,72 @@ velocityLinear.b,velocityLinear.a);fragmentOutputs.color=vec4f(velocityLinear.rg
     return ui2;
   }
 
+  // src/client/canon.ts
+  var CANONICAL_STAIRWELL_COUNT = 9375;
+  var PRIMARY_STAIRWELL_STATIONS = [
+    12,
+    24,
+    36,
+    48,
+    72
+  ];
+  var DOCUMENTED_TEN_PLATFORM_STATIONS = [
+    24,
+    36,
+    48
+  ];
+  var HIDDEN_STAIRWELL_STATION = 433;
+  var STATION_24_STAIRWELLS = 5;
+  var STATION_24_PLATFORM_EXITS = 10;
+  var HOMEWARD_BOUND_PLATFORM_COUNT = 12;
+  var EXIT_ONLY_CAVERN_EXCEPTIONS = /* @__PURE__ */ new Set([
+    50,
+    60,
+    75
+  ]);
+  function isPrimaryStairwellStation(n) {
+    return PRIMARY_STAIRWELL_STATIONS.some((station) => station === n);
+  }
+  function isPrimeTransferStation(n) {
+    if (n < 11 || n > 433) return false;
+    for (let k = 2; k * k <= n; k++) if (n % k === 0) return false;
+    return true;
+  }
+  function transferClub(n) {
+    if (!isPrimeTransferStation(n)) return null;
+    if (n % 10 === 1) return "Desperado Club";
+    if (n % 10 === 9) return "Club Vanquisher";
+    return null;
+  }
+  function isExitOnlyCavernStation(n) {
+    return n >= 15 && n <= 430 && n % 5 === 0 && !EXIT_ONLY_CAVERN_EXCEPTIONS.has(n);
+  }
+  function stationCanonRole(n) {
+    if (DOCUMENTED_TEN_PLATFORM_STATIONS.some((station) => station === n)) {
+      return `Stairwell hub \xB7 ${STATION_24_STAIRWELLS} stairwells \xB7 ${STATION_24_PLATFORM_EXITS} platform exits` + (n === 24 ? " \xB7 Escape Velocity III" : "");
+    }
+    if (isPrimaryStairwellStation(n)) {
+      return "Stairwell hub \xB7 portals open during the final six hours";
+    }
+    if (n === HIDDEN_STAIRWELL_STATION) {
+      return "Terminus transfer \xB7 saferoom \xB7 Station Mimic \xB7 hidden stairwell revealed after the Mimic is removed";
+    }
+    if (n === 435) return "End of the Line \xB7 employees depart through the trainyard portal";
+    if (n === 436) return "Abyss Station \xB7 engine return / discarded-car disposal";
+    if (n === 60) {
+      return `Employee hub \xB7 selector for ${HOMEWARD_BOUND_PLATFORM_COUNT} Homeward Bound platforms`;
+    }
+    if (n === 50) return "Homeward Bound access \xB7 explicitly not an Exit-only Cavern";
+    if (isExitOnlyCavernStation(n)) {
+      return "Exit-only cavern \xB7 monster offload / trainyard return path";
+    }
+    if (isPrimeTransferStation(n)) {
+      const club = transferClub(n);
+      return "Transfer station \xB7 saferoom" + (club ? ` \xB7 ${club}` : "");
+    }
+    return "Modeled subway stop";
+  }
+
   // ../../.cache/deno/npm/registry.npmjs.org/@babylonjs/core/9.29.0/Misc/symbolMetadataPolyfill.js
   function ApplySymbolMetadataPolyfill() {
     if (typeof Symbol !== "undefined" && !Symbol.metadata) {
@@ -383956,10 +384022,6 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
     };
     bulkRoots.upper.parent = upper;
     bulkRoots.lower.parent = lower;
-    const stairsUpper = new TransformNode("upper stairwells", scene);
-    stairsUpper.parent = upper;
-    const stairsLower = new TransformNode("inverted stairwells", scene);
-    stairsLower.parent = lower;
     const allMaterials = [], labels = [], routeMeshes = [], stationMeshes = [], trains = [], yards = [], bosses = [], enginePortals = [];
     const colorCanvas = document.createElement("canvas");
     colorCanvas.width = colorCanvas.height = 1;
@@ -384266,6 +384328,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
     function stationT(n) {
       return n <= 72 ? (n - 10) / 62 * 0.17 : 0.17 + (n - 72) / 364 * 0.83;
     }
+    const modeledHubPlatformCount = STATION_24_PLATFORM_EXITS;
     const yardLetters = [
       "B",
       "C",
@@ -384389,7 +384452,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       return ringPoint(required(s).ring, required(s).angle);
     }
     function axisBase(i, t) {
-      const g = Math.floor(i / 9), s = yardSpecs[g % 12], r = logoRings[required(s).ring], loopEnd = 0.86;
+      const g = Math.floor(i / modeledHubPlatformCount), s = yardSpecs[g % 12], r = logoRings[required(s).ring], loopEnd = 0.86;
       const innerAngle = Math.atan2(-required(r).z, -required(r).x);
       const remaining = (required(s).direction * (innerAngle - required(s).angle) % TAU + TAU) % TAU;
       const travel = TAU + remaining;
@@ -384743,7 +384806,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       };
     }
     const knownRoutes = colorDefinitions.map((d, i) => {
-      const namedNodes = Object.values(nodes).filter((n) => n.lines.includes(d[0])), spec = yardSpecs[Math.floor(i / 9) % 12];
+      const namedNodes = Object.values(nodes).filter((n) => n.lines.includes(d[0])), spec = yardSpecs[Math.floor(i / modeledHubPlatformCount) % 12];
       const anchors = [
         10,
         12,
@@ -384762,7 +384825,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
         n,
         t: stationT(n),
         ring: required(spec).ring,
-        p: axisBase(n <= 72 ? Math.floor(i / 9) * 9 : i, stationT(n)).add(new V(0, 1.15, 0))
+        p: axisBase(n <= 72 ? Math.floor(i / modeledHubPlatformCount) * modeledHubPlatformCount : i, stationT(n)).add(new V(0, 1.15, 0))
       }));
       namedNodes.forEach((n) => anchors.push({
         n: n.n,
@@ -384857,17 +384920,12 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
         return required(knownRoutes[i]).point(t).subtract(new V(0, 1.15, 0));
       }
       let p = axisBase(i, t);
-      for (const n of [
-        12,
-        24,
-        36,
-        48,
-        72
-      ]) {
+      for (const n of PRIMARY_STAIRWELL_STATIONS) {
         const s = stationT(n), distance = Math.abs(t - s), width = 0.012;
         if (distance < width) {
           const u = 1 - distance / width;
-          p = V.Lerp(p, axisBase(Math.floor(i / 9) * 9, s), u * u * (3 - 2 * u));
+          const base = Math.floor(i / modeledHubPlatformCount) * modeledHubPlatformCount;
+          p = V.Lerp(p, axisBase(base, s), u * u * (3 - 2 * u));
         }
       }
       return p;
@@ -384880,13 +384938,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
             length: 51
           }, (_, i) => i / 50),
           0.86,
-          ...[
-            12,
-            24,
-            36,
-            48,
-            72
-          ].map(stationT)
+          ...PRIMARY_STAIRWELL_STATIONS.map(stationT)
         ])
       ].sort((a, b) => a - b);
       const rings = sampleTs.length - 1, facets = 3, sign = face === "upper" ? 1 : -1;
@@ -384966,14 +385018,6 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       };
       r.opposing = opposing;
     });
-    const stairPrototype = MeshBuilder.CreateCylinder("stair gate", {
-      diameterTop: 0.6,
-      diameterBottom: 1.8,
-      height: 1.5,
-      tessellation: 4
-    }, scene);
-    stairPrototype.material = stairMat;
-    stairPrototype.isVisible = false;
     function instancedMarkers(name652, source, points, parent, inverted = false) {
       const mesh = source.clone(name652);
       mesh.isVisible = true;
@@ -384984,22 +385028,6 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
       return mesh;
     }
-    const stairPointsUpper = [], stairPointsLower = [];
-    for (let g = 0; g < 347; g++) {
-      for (const n of [
-        12,
-        24,
-        36,
-        48,
-        72
-      ]) {
-        const p = axis(g * 9, stationT(n));
-        stairPointsUpper.push(p.add(new V(0, 1.15, 0)));
-        stairPointsLower.push(p.add(new V(0, -1.15, 0)));
-      }
-    }
-    instancedMarkers("1735 upper stair chambers", stairPrototype, stairPointsUpper, stairsUpper);
-    instancedMarkers("1735 opposite stair chambers", stairPrototype, stairPointsLower, stairsLower, true);
     function carPrototype(name652, bodyMaterial, length = 1.8) {
       const parts = [
         box(name652 + " body", length, 0.58, 0.7, new V(0, 0.48, 0), bodyMaterial, null),
@@ -385437,7 +385465,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
             1
           ],
           [
-            "24 \xB7 stairwell",
+            "24 \xB7 Escape Velocity III / stairwell hub",
             0
           ]
         ],
@@ -385465,7 +385493,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
             0.4
           ],
           [
-            "60 \xB7 employee hub",
+            `60 \xB7 ${HOMEWARD_BOUND_PLATFORM_COUNT} Homeward Bound platforms`,
             1
           ]
         ],
@@ -385693,12 +385721,8 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       const marks = instancedMarkers("all numbered stops on " + r.name, previewStation, points, parent);
       selectedStationMeshes.push(marks);
       for (const n of [
-        12,
-        24,
-        36,
-        48,
+        ...PRIMARY_STAIRWELL_STATIONS,
         60,
-        72,
         75,
         83,
         89,
@@ -385706,13 +385730,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
         435,
         436
       ]) {
-        const p = r.point(stationT(n)), special = torus("station " + n, p, n === 433 ? 2.8 : 1.7, 0.15, [
-          12,
-          24,
-          36,
-          48,
-          72
-        ].includes(n) ? stairMat : n >= 433 ? bossMat : steel, parent);
+        const p = r.point(stationT(n)), special = torus("station " + n, p, n === 433 ? 2.8 : 1.7, 0.15, isPrimaryStairwellStation(n) ? stairMat : n >= 433 ? bossMat : steel, parent);
         special.metadata = {
           number: n,
           route: r.id
@@ -385735,13 +385753,13 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       }
       if (activeObject?.kind === "node") {
         const n = nodes[activeObject.id];
-        return required(n).label + " \xB7 " + (required(n).n === 75 ? "repair carts, security, and the Downward Dog" : required(n).n === 60 ? "abandoned employee housing and staff access" : required(n).n === 436 ? "engine returns by portal; discarded cars fall into the Abyss" : "documented station connection") + " \xB7 position and architecture reconstructed.";
+        return required(n).label + " \xB7 " + (required(n).n === 75 ? "repair carts, security, and the Downward Dog" : required(n).n === 60 ? `abandoned employee housing; selector for ${HOMEWARD_BOUND_PLATFORM_COUNT} Homeward Bound platforms` : required(n).n === 436 ? "engine returns by portal; discarded cars fall into the Abyss" : "documented station connection") + " \xB7 position and architecture reconstructed.";
       }
       if (activeObject?.kind === "yard") {
         return objectTitle(activeObject) + " \xB7 dispatch tracks, parked cars, and return portal. " + (activeObject.face === -1 ? "This opposing yard\u2019s identity and pairing are inferred." : "Architecture and paired location reconstructed.");
       }
       if (activeObject?.kind === "mimic") {
-        return objectTitle(activeObject) + " \xB7 Terminus 433 \xB7 one of six city bosses. This placement and appearance are inferred.";
+        return objectTitle(activeObject) + " \xB7 Terminus 433 \xB7 one of six city bosses concealing a stairwell that is revealed after the Mimic is removed. This placement and appearance are inferred.";
       }
       if (activeObject?.kind === "landmark" && activeObject.id === "wreckage") {
         return "Discarded carriages below the Abyss \xB7 representative wreckage; placement and quantity reconstructed.";
@@ -385758,13 +385776,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       if (selectedStation !== null && numberedLine()) {
         const r = selectedRoute(), n = selectedStation;
         const at = required(r).namedNodes.find((k) => k.n === n);
-        const role = [
-          12,
-          24,
-          36,
-          48,
-          72
-        ].includes(n) ? "stairwell \xB7 opens during the final six hours" : n === 60 ? "employee hub" : n === 75 ? required(r).name === "Vermillion" ? "repair / security station" : "repair hub \xB7 this line\u2019s platform is unconfirmed" : n === 433 ? "Terminus \xB7 Station Mimic danger" : n === 435 ? "staff exit / trainyard portal" : n === 436 ? "engine returns by portal; cars fall into the Abyss" : isPrime(n) ? "prime-numbered transfer / safe-room station" : "modeled subway stop";
+        const role = n === 75 ? required(r).name === "Vermillion" ? "repair / security station" : "repair hub \xB7 this line\u2019s platform is unconfirmed" : stationCanonRole(n);
         return required(r).name + " " + n + " \xB7 " + (at ? at.label.split(" \xB7 ")[1] + " \xB7 " : "") + role + (at ? "" : " \xB7 position inferred");
       }
       if (selected === "nightmare") {
@@ -385777,10 +385789,10 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
         return "Eviscerator \xB7 Cobalt 271 is a documented stop. The remaining circuit and appearance are reconstructed.";
       }
       if (selected === "escape") {
-        return "Escape Velocity \xB7 reverse service toward stairwells; Tangerine 89 is a known connection. This representative route is inferred.";
+        return `Escape Velocity \xB7 the station-24 platform is specifically Escape Velocity III, in a ${STATION_24_STAIRWELLS}-stairwell / ${STATION_24_PLATFORM_EXITS}-platform hub. Tangerine 89 is a known Escape Velocity connection; assigning both points to this one representative path remains inferred.`;
       }
       if (selected === "homeward") {
-        return "Homeward Bound \xB7 staff service linking trainyards and the low-numbered employee area. This representative E\u201324\u201360 route is reconstructed.";
+        return `Homeward Bound \xB7 station 60 has a selector for ${HOMEWARD_BOUND_PLATFORM_COUNT} Homeward Bound platforms. This E\u201324\u201360 path represents one staff service; the complete employee network and yard-to-platform assignments are not reconstructed as canon.`;
       }
       if (numberedLine()) {
         const r = selectedRoute();
@@ -385795,12 +385807,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       if (currentView === "known") {
         return "Colored routes follow the Syndicate ring arcs and switch rings at inferred intersections. Faint guides show the loop backbone. Recorded stops are retained; the paths, junctions, and positions are reconstructed.";
       }
-      return "Syndicate ring pattern \xB7 6,246 modeled lines in 3,123 paired tunnels and 24 yard decks. Counts are fan estimates; ring arrangement, coordinates, and unnamed connections are inferred.";
-    }
-    function isPrime(n) {
-      if (n < 2) return false;
-      for (let k = 2; k * k <= n; k++) if (n % k === 0) return false;
-      return true;
+      return `Syndicate ring pattern \xB7 ${CANONICAL_STAIRWELL_COUNT.toLocaleString()} canonical stairwells. The 6,246 rendered rail faces / 3,123 paired visual tunnels and 24 yard decks are fan-density estimates, not a derived canonical network count.`;
     }
     function cameraAspectScale() {
       return Math.max(1, 1.3 / (canvas.clientWidth * camera.viewport.width / (canvas.clientHeight * camera.viewport.height)));
@@ -385855,12 +385862,6 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       bulkRoots.upper.setEnabled(showBulk);
       bulkRoots.lower.setEnabled(showBulk);
       ringGuides.setEnabled(currentView === "known" && activeObject?.kind !== "mimic");
-      const showStairs = [
-        "whole",
-        "top"
-      ].includes(currentView);
-      stairsUpper.setEnabled(showStairs);
-      stairsLower.setEnabled(showStairs);
       middle.setEnabled(!section && !logo && Number(splitControl.value) > 4);
       routeMeshes.forEach((m) => m.setEnabled(logo ? !!namedRoutes[m.metadata.route] : activeObject?.kind === "mimic" ? false : localYard ? m.metadata.route === "homeward" : localAbyss ? m.metadata.route === "nightmare" : selected === "all" || m.metadata.route === selected || showBulk));
       hiddenLines.setEnabled(showBulk);
@@ -387045,20 +387046,20 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       add({
         kind: "mimic",
         id
-      }, "bosses", "Terminus 433 \xB7 placement inferred", "station mimic boss terminus 433", id === 1 ? 7 : 80 + id);
+      }, "bosses", "Terminus 433 \xB7 hidden stairwell revealed after Mimic removal \xB7 placement inferred", "station mimic boss terminus 433 hidden stairwell saferoom", id === 1 ? 7 : 80 + id);
     }
     add({
       kind: "stop",
       route: "escape",
       t: 0,
-      label: "24 \xB7 stairwell"
-    }, "stations", "Escape Velocity \xB7 representative access", "escape velocity stairwell stairs 24", 35);
+      label: "24 \xB7 Escape Velocity III / stairwell hub"
+    }, "stations", "5 stairwells \xB7 10 platform exits \xB7 documented hub; service geometry inferred", "escape velocity escape velocity iii stairwell stairs station 24", 35);
     add({
       kind: "stop",
       route: "homeward",
       t: 0.4,
       label: "24 \xB7 staff access"
-    }, "stations", "Homeward Bound \xB7 representative access", "homeward bound stairs staff 24", 36);
+    }, "stations", "Homeward Bound \xB7 representative staff access toward station 60", "homeward bound stairs staff 24", 36);
     catalog.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
     function dynamicStation(query2) {
       const number = query2.match(/(?:^|\s)(\d{1,3})(?:$|\s)/);
@@ -387068,13 +387069,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
       const lineWords = query2.replace(number[0], " ").trim();
       const route = lineWords ? model2.knownRoutes.find((r) => normalize(r.name) === lineWords) : model2.knownRoutes.find((r) => r.id === model2.state.selected);
       if (!route || route.namedNodes.some((k) => k.n === n)) return null;
-      const role = [
-        12,
-        24,
-        36,
-        48,
-        72
-      ].includes(n) ? "Stairwell \xB7 final six hours" : n === 433 ? "Terminus \xB7 Station Mimic danger" : n === 435 ? "Staff exit / trainyard portal" : n === 436 ? "Abyss return / disposal" : "Numbered stop \xB7 position inferred";
+      const role = n === 75 && route.name === "Vermillion" ? "Repair / security station \xB7 Downward Dog" : stationCanonRole(n);
       return entry({
         kind: "station",
         route: route.id,
@@ -387290,7 +387285,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
             kind: "stop",
             route: "escape",
             t: 0,
-            label: "24 \xB7 stairwell"
+            label: "24 \xB7 Escape Velocity III / stairwell hub"
           }
         ],
         homeward: [
@@ -387394,13 +387389,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
             kind: "node",
             id: required(Object.keys(model2.nodes).find((k) => model2.nodes[k] === n))
           })),
-          ...[
-            12,
-            24,
-            36,
-            48,
-            72
-          ].map((n) => ({
+          ...PRIMARY_STAIRWELL_STATIONS.map((n) => ({
             kind: "station",
             route: id,
             n
@@ -387414,13 +387403,7 @@ clipPos=viewProjection*worldPos;previousClipPos=previousViewProjection*previousW
         return "View " + required(model2.namedRoutes[o.id]).name + " route";
       }
       if (o.kind === "train") return "Locate " + model2.objectTitle(o);
-      if (o.kind === "station" && [
-        12,
-        24,
-        36,
-        48,
-        72
-      ].includes(o.n)) return "Stairwell " + o.n;
+      if (o.kind === "station" && isPrimaryStairwellStation(o.n)) return "Stairwell " + o.n;
       if (o.kind === "stop") return o.label;
       if (o.kind === "node") {
         const n = model2.nodes[o.id];

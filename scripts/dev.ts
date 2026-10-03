@@ -27,7 +27,8 @@ const children = [
 ];
 
 let stopping = false;
-const siteWatcher = Deno.watchFs(siteSource);
+const siteSourcePath = await Deno.realPath(siteSource);
+const siteWatcher = Deno.watchFs(siteSourcePath);
 const siteSync = (async () => {
   try {
     for await (const event of siteWatcher) {

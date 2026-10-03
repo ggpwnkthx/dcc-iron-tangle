@@ -38,6 +38,7 @@ export const COLOR_DEFINITIONS: [string, PaletteKey, PaletteKey?, number?][] = [
   ["Mindaro", "yellow", "green", .22],
   ["Grullo", "muted-foreground", "orange", .2],
   ["Zomp", "green", "blue", .35],
+];
 
 interface MaterialEntry {
   m: B.StandardMaterial;

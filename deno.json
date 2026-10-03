@@ -1,0 +1,47 @@
+{
+  "tasks": {
+    "dev": "deno run --no-prompt --allow-run=\"$(deno eval 'console.log(Deno.execPath())')\" scripts/dev.ts",
+    "start": "deno run --no-prompt --allow-read=public --allow-net=127.0.0.1 src/main.ts",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "typecheck": "deno check src/main.ts src/client/main.ts scripts/dev.ts tests/*_test.ts",
+    "test": "deno test --no-prompt --allow-read=public tests",
+    "check": "deno task fmt:check && deno task lint && deno task typecheck && deno task test",
+    "build": "deno bundle --check --platform=browser --format=iife --minify --output=public/assets/app.js src/client/main.ts",
+    "build:watch": "deno bundle --check --watch --platform=browser --format=iife --output=public/assets/app.js src/client/main.ts"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "lib": [
+      "deno.window",
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ]
+  },
+  "fmt": {
+    "include": [
+      "src",
+      "tests",
+      "deno.json",
+      "README.md",
+      ".vscode/settings.json",
+      "scripts"
+    ],
+    "lineWidth": 100
+  },
+  "lint": {
+    "include": [
+      "src",
+      "tests",
+      "scripts"
+    ]
+  },
+  "imports": {
+    "@babylonjs/core": "npm:@babylonjs/core@9.29.0"
+  },
+  "nodeModulesDir": "none"
+}

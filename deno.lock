@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@babylonjs/core@9.29.0": "9.29.0"
+  },
+  "npm": {
+    "@babylonjs/core@9.29.0": {
+      "integrity": "sha512-qWrtTRsZF0DO6IouYTEZrcQtUEJzlKbc3i/7Ek2T1INFJ+zp9fxO+CIRJ9HRInOG6HYjQl1i6RhxXVyUbx8yxQ=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@babylonjs/core@9.29.0"
+    ]
+  }
+}

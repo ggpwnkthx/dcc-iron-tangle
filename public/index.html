@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-visualize-standalone>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#0d141e">
+  <title>The Iron Tangle · Floor 4 Explorer</title>
+  <link rel="stylesheet" href="assets/ui.css">
+  <link rel="stylesheet" href="assets/model.css">
+</head>
+<body>
+<main id="iron-tangle-3d" aria-label="The Iron Tangle, Floor 4 explorer">
+  <svg class="it-icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+      <symbol id="icon-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 12h1"/></symbol>
+      <symbol id="icon-left" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></symbol>
+      <symbol id="icon-right" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol>
+      <symbol id="icon-focus" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="icon-fullscreen" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></symbol>
+      <symbol id="icon-exit-fullscreen" viewBox="0 0 24 24"><path d="M3 8h5V3M21 8h-5V3M16 21v-5h5M8 21v-5H3"/></symbol>
+      <symbol id="icon-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 1v6M12 17v6M1 12h6M17 12h6"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+      <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="icon-tools" viewBox="0 0 24 24"><path d="M5 3v18M12 3v18M19 3v18"/><path d="M2 8h6M9 16h6M16 8h6"/></symbol>
+      <symbol id="icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"/></symbol>
+      <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></symbol>
+      <symbol id="icon-station" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5"/></symbol>
+      <symbol id="icon-train" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="15" rx="3"/><path d="M6 10h12M12 3v7M8 18l-2 3M16 18l2 3M9 14h.01M15 14h.01"/></symbol>
+      <symbol id="icon-line" viewBox="0 0 24 24"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 18h5a4 4 0 0 0 4-4v-4a4 4 0 0 1 1-3"/></symbol>
+      <symbol id="icon-yard" viewBox="0 0 24 24"><path d="M4 21V10l8-6 8 6v11M2 21h20M8 21v-8h8v8M12 13v8"/></symbol>
+      <symbol id="icon-boss" viewBox="0 0 24 24"><path d="m4 5 4 3 4-5 4 5 4-3v11l-4 5-4-3-4 3-4-5Z"/><path d="M8 12h1M15 12h1M9 16h6"/></symbol>
+      <symbol id="icon-landmark" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="it-stage" aria-label="3D viewer">
+    <canvas id="it-canvas" tabindex="0" aria-label="Interactive three-dimensional Iron Tangle. Drag to orbit, right-drag to pan, scroll to zoom, or click an object. Use Explore objects for keyboard navigation.">Use the Explore objects panel to navigate the Iron Tangle.</canvas>
+    <canvas id="it-labels" aria-hidden="true"></canvas>
+    <div id="it-loading" class="it-loading" role="status"><span class="it-spinner" aria-hidden="true"></span><strong>Building the Iron Tangle</strong><span>Weaving the rails, stations, and trainyards…</span></div>
+    <div id="it-error" class="it-error" role="alert" hidden></div>
+  </div>
+
+  <header class="it-topbar">
+    <div class="it-brand">
+      <svg class="it-brand-mark" width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true"><circle cx="14" cy="17" r="10"/><circle cx="23" cy="20" r="11"/><circle cx="20" cy="13" r="8"/><circle cx="19" cy="19" r="2" class="it-brand-center"/></svg>
+      <div><span class="it-eyebrow">FLOOR 04 <span class="it-brand-divider">/</span> <span class="it-brand-subtitle">INTERACTIVE ATLAS</span></span><h1>The Iron Tangle</h1></div>
+    </div>
+    <div class="it-header-actions">
+      <button id="it-browser-toggle" class="btn it-with-icon" type="button" aria-expanded="true" aria-controls="it-browser" title="Explore objects (/)"><svg class="it-icon" aria-hidden="true"><use href="#icon-panel"/></svg><span>Explore</span></button>
+      <div class="it-history" role="group" aria-label="Selection history">
+        <button id="it-back" class="btn it-icon-button" type="button" disabled aria-label="Back in selection history" title="Back in selection history (Alt + Left)"><svg class="it-icon" aria-hidden="true"><use href="#icon-left"/></svg></button>
+        <button id="it-forward" class="btn it-icon-button" type="button" disabled aria-label="Forward in selection history" title="Forward in selection history (Alt + Right)"><svg class="it-icon" aria-hidden="true"><use href="#icon-right"/></svg></button>
+      </div>
+      <button id="it-theme" class="btn it-icon-button" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg class="it-icon" aria-hidden="true"><use href="#icon-sun"/></svg></button>
+      <button id="it-fullscreen" class="btn it-with-icon" type="button" aria-label="Enter fullscreen" aria-pressed="false" title="Enter fullscreen (F)"><svg class="it-icon" aria-hidden="true"><use href="#icon-fullscreen"/></svg><span>Fullscreen</span></button>
+    </div>
+  </header>
+
+  <aside id="it-browser" class="it-browser it-panel" aria-label="Explore objects">
+    <div class="it-panel-heading"><div><span class="it-eyebrow">YOUR NEXT STOP</span><h2>Explore objects</h2></div><button id="it-browser-close" class="btn it-icon-button it-quiet" type="button" aria-label="Close object browser" title="Close object browser"><svg class="it-icon" aria-hidden="true"><use href="#icon-close"/></svg></button></div>
+    <div class="it-search-wrap"><svg class="it-icon" aria-hidden="true"><use href="#icon-search"/></svg><label class="sr-only" for="it-search">Search points of interest</label><input id="it-search" type="search" class="form-control" placeholder="Station, line, train, or yard…" autocomplete="off" aria-controls="it-results" aria-describedby="it-search-hint"><button id="it-search-clear" class="btn it-icon-button it-quiet" type="button" aria-label="Clear search" hidden><svg class="it-icon" aria-hidden="true"><use href="#icon-close"/></svg></button><kbd id="it-search-key">/</kbd></div>
+    <div id="it-search-hint" class="sr-only">Use Up and Down to browse results and Enter to select. Try 83, Trainyard E, or Red 24.</div>
+    <div class="it-category-chips" role="group" aria-label="Filter by object type">
+      <button class="btn it-chip" type="button" data-category="all" aria-pressed="true">All</button>
+      <button class="btn it-chip" type="button" data-category="stations" aria-pressed="false">Stations</button>
+      <button class="btn it-chip" type="button" data-category="trains" aria-pressed="false">Trains</button>
+      <button class="btn it-chip" type="button" data-category="lines" aria-pressed="false">Lines</button>
+      <button class="btn it-chip" type="button" data-category="yards" aria-pressed="false">Yards</button>
+      <button class="btn it-chip" type="button" data-category="bosses" aria-pressed="false">Bosses</button>
+      <button class="btn it-chip" type="button" data-category="landmarks" aria-pressed="false">Landmarks</button>
+    </div>
+    <select id="it-category" hidden aria-label="Object category"><option value="all">All objects</option><option value="stations">Stations</option><option value="trains">Trains</option><option value="lines">Lines</option><option value="yards">Trainyards</option><option value="bosses">Station Mimics</option><option value="landmarks">Landmarks</option></select>
+    <div class="it-collections" role="group" aria-label="Object collection">
+      <button class="btn" type="button" data-collection="all" aria-pressed="true">Discover</button>
+      <button class="btn" type="button" data-collection="favorites" aria-pressed="false"><svg class="it-icon" aria-hidden="true"><use href="#icon-star"/></svg>Saved <span id="it-favorite-count">0</span></button>
+      <button class="btn" type="button" data-collection="recent" aria-pressed="false"><svg class="it-icon" aria-hidden="true"><use href="#icon-clock"/></svg>Recent</button>
+    </div>
+    <div class="it-results-heading"><span id="it-results-title">POINTS OF INTEREST</span><span id="it-result-count" role="status" aria-live="polite"></span></div>
+    <div id="it-results-disclosure" class="it-results-scroll"><ul id="it-results" class="it-results" aria-label="Matching objects"></ul><div id="it-empty" class="it-empty" hidden><svg class="it-icon" aria-hidden="true"><use href="#icon-search"/></svg><strong id="it-empty-title">No matching objects</strong><p id="it-empty-copy">Try a station number, line name, or yard letter.</p><button id="it-reset-filters" class="btn" type="button">Reset filters</button></div></div>
+    <div class="it-browser-footer"><span class="it-browser-keyboard"><kbd>↑</kbd><kbd>↓</kbd> browse <kbd>↵</kbd> go</span><span id="it-catalog-count">80 objects</span></div>
+  </aside>
+
+  <nav class="it-viewbar it-panel" aria-label="Scene views">
+    <span class="it-eyebrow">VIEW</span>
+    <div class="it-quick-views" role="group" aria-label="Quick views"><button class="btn" type="button" data-view="whole" aria-pressed="true">Whole Tangle</button><button class="btn" type="button" data-view="known" aria-pressed="false">Routes</button><button class="btn" type="button" data-view="top" aria-pressed="false">Overhead</button><button class="btn" type="button" data-view="logo" aria-pressed="false">Syndicate</button></div>
+    <details id="it-cutaway-picker" class="it-cutaway-picker"><summary class="btn">Cutaways <span aria-hidden="true">⌄</span></summary><div class="it-cutaway-menu it-panel"><button class="btn" type="button" data-view="yard" aria-pressed="false">Trainyard E</button><button class="btn" type="button" data-view="abyss" aria-pressed="false">The Abyss</button><button class="btn" type="button" data-view="cutaway" aria-pressed="false">Paired tunnel</button></div></details>
+    <label class="sr-only" for="it-view">Scene view</label><select id="it-view" class="form-select"><option value="whole">Whole Tangle</option><option value="known">Route inspection</option><option value="top">Overhead</option><option value="logo">Syndicate logo</option><option value="yard">Trainyard cutaway</option><option value="abyss">The Abyss cutaway</option><option value="cutaway">Paired tunnel cutaway</option></select>
+  </nav>
+
+  <div class="it-camera-tools it-panel" role="group" aria-label="Camera navigation"><button id="it-overview" class="btn it-icon-button" type="button" aria-label="Reset to whole Tangle" title="Whole Tangle (Home)"><svg class="it-icon" aria-hidden="true"><use href="#icon-home"/></svg></button><span class="it-tool-divider"></span><button id="it-zoom-in" class="btn it-icon-button" type="button" aria-label="Zoom in" title="Zoom in (+)"><svg class="it-icon" aria-hidden="true"><use href="#icon-plus"/></svg></button><button id="it-zoom-out" class="btn it-icon-button" type="button" aria-label="Zoom out" title="Zoom out (−)"><svg class="it-icon" aria-hidden="true"><use href="#icon-minus"/></svg></button></div>
+
+  <section id="it-selection" class="it-selection it-panel" aria-label="Selected object" hidden>
+    <div class="it-selection-heading"><div class="it-selection-name"><span id="it-selected-kind" class="it-eyebrow">Overview</span><h2 id="it-selected-title">Whole Tangle</h2></div><div class="it-selection-actions"><button id="it-save-selection" class="btn it-icon-button it-quiet" type="button" aria-label="Save selected object" aria-pressed="false" title="Save object"><svg class="it-icon" aria-hidden="true"><use href="#icon-star"/></svg></button><button id="it-selection-close" class="btn it-icon-button it-quiet" type="button" aria-label="Hide object details" title="Hide object details"><svg class="it-icon" aria-hidden="true"><use href="#icon-close"/></svg></button></div></div>
+    <div class="it-selection-content"><div id="it-detail" class="text-small" aria-live="polite">Syndicate ring pattern · 6,246 modeled lines in 3,123 paired tunnels. Counts are fan estimates; ring arrangement and coordinates are inferred.</div>
+    <div id="it-connection-group" hidden><div id="it-connections-label" class="it-eyebrow">STOPS &amp; CONNECTIONS</div><div id="it-connections" aria-labelledby="it-connections-label"></div></div></div>
+    <div class="it-mobile-history" role="group" aria-label="Selection history"><span class="text-small">Revisit selections</span><button id="it-back-mobile" class="btn" type="button" disabled aria-label="Back in selection history"><svg class="it-icon" aria-hidden="true"><use href="#icon-left"/></svg>Back</button><button id="it-forward-mobile" class="btn" type="button" disabled aria-label="Forward in selection history">Forward<svg class="it-icon" aria-hidden="true"><use href="#icon-right"/></svg></button></div>
+    <div class="it-selection-footer"><div class="it-object-stepper" role="group" aria-label="Navigate matching objects"><button id="it-object-prev" class="btn it-icon-button" type="button" disabled aria-label="Previous matching object" title="Previous matching object"><svg class="it-icon" aria-hidden="true"><use href="#icon-left"/></svg></button><span id="it-object-position" class="text-small tabular-nums">Selected object</span><button id="it-object-next" class="btn it-icon-button" type="button" disabled aria-label="Next matching object" title="Next matching object"><svg class="it-icon" aria-hidden="true"><use href="#icon-right"/></svg></button></div><button id="it-focus" class="btn btn-primary" type="button" disabled><svg class="it-icon" aria-hidden="true"><use href="#icon-focus"/></svg>Focus</button></div>
+  </section>
+  <button id="it-selection-reopen" class="btn it-panel it-selection-reopen" type="button" hidden><svg class="it-icon" aria-hidden="true"><use href="#icon-focus"/></svg><span>Object details</span></button>
+
+  <div class="it-bottom-tools it-panel" role="group" aria-label="Viewer tools"><button id="it-play" type="button" class="btn" aria-pressed="false">Run trains</button><span class="it-tool-divider"></span><button id="it-tools-toggle" class="btn it-with-icon" type="button" aria-expanded="false" aria-controls="it-advanced"><svg class="it-icon" aria-hidden="true"><use href="#icon-tools"/></svg><span>Tools</span></button><button id="it-help-toggle" class="btn it-icon-button" type="button" aria-label="Navigation help" aria-expanded="false" aria-controls="it-help" title="Navigation help (?)"><svg class="it-icon" aria-hidden="true"><use href="#icon-help"/></svg></button></div>
+
+  <section id="it-advanced" class="it-advanced it-panel" aria-label="Route and tunnel tools" hidden>
+    <div class="it-panel-heading"><div><span class="it-eyebrow">INSPECT THE NETWORK</span><h2>Route &amp; tunnel tools</h2></div><button id="it-tools-close" class="btn it-icon-button it-quiet" type="button" aria-label="Close route tools"><svg class="it-icon" aria-hidden="true"><use href="#icon-close"/></svg></button></div>
+    <div class="it-tools">
+      <label class="form-label" for="it-line">Isolate a line</label><select id="it-line" class="form-select"><option value="all">All modeled lines</option><optgroup label="Named trains"><option value="nightmare">Nightmare Express</option><option value="dismemberment">Dismemberment Limited</option><option value="eviscerator">Eviscerator</option></optgroup><optgroup label="Special services"><option value="escape">Escape Velocity</option><option value="homeward">Homeward Bound</option></optgroup><optgroup id="it-colors" label="Colored lines"></optgroup></select>
+      <form id="it-station-form" class="it-station-form"><label class="form-label" for="it-station">Jump to station<input id="it-station" class="form-control" type="number" min="10" max="436" step="1" value="83" disabled></label><button id="it-station-go" class="btn" type="submit" disabled>Go</button></form>
+      <p class="it-tool-hint text-small" id="it-station-hint">Select a colored line to jump to stations 10–436.</p>
+      <label class="form-label it-split" for="it-split">Separate tunnel faces <output id="it-split-value" class="tabular-nums text-small" for="it-split">0</output><input id="it-split" class="form-range" type="range" min="0" max="28" step="1" value="0" aria-label="Separate opposite tunnel faces"></label>
+      <p class="text-small it-tool-hint">Separation changes the display offset. Geometry and unrecorded connections are reconstructed.</p>
+    </div>
+  </section>
+
+  <section id="it-help" class="it-help it-panel" aria-label="Navigation help" hidden>
+    <div class="it-panel-heading"><div><span class="it-eyebrow">FIND YOUR WAY</span><h2>Navigation help</h2></div><button id="it-help-close" class="btn it-icon-button it-quiet" type="button" aria-label="Close navigation help"><svg class="it-icon" aria-hidden="true"><use href="#icon-close"/></svg></button></div>
+    <dl class="it-help-grid"><dt>Orbit</dt><dd>Drag with one finger or the left mouse button</dd><dt>Pan</dt><dd>Right-drag or drag with two fingers</dd><dt>Zoom</dt><dd>Scroll, pinch, or use + / −</dd><dt>Select</dt><dd>Click a dot, label, object, or search result</dd><dt>Search</dt><dd><kbd>/</kbd> then <kbd>↑</kbd> <kbd>↓</kbd> and <kbd>Enter</kbd></dd><dt>Fullscreen</dt><dd><kbd>F</kbd> · <kbd>Esc</kbd> exits</dd><dt>Overview</dt><dd><kbd>Home</kbd> returns to the whole Tangle</dd><dt>Revisit</dt><dd><kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd></dd></dl>
+    <p class="text-small it-tool-hint">Save objects with the star and revisit them in Saved. Recent holds your last 20 selections. This is an unofficial fan reconstruction; contains Floor 4 spoilers.</p>
+  </section>
+
+  <footer class="it-statusbar"><span><span class="it-status-dot" aria-hidden="true"></span><span id="it-caption">Reconstructed geometry</span></span><span class="it-canvas-hint">Drag to orbit <span>·</span> Scroll to zoom <span>·</span> Click to explore</span><span class="it-fan-note">Fan reconstruction · Floor 4 spoilers</span></footer>
+  <div id="it-toast" class="it-toast it-panel" role="status" aria-live="polite" hidden></div>
+  <span id="it-color-probe" aria-hidden="true"></span><span id="it-font-probe" class="text-small" aria-hidden="true">M</span>
+</main>
+<script src="assets/app.js" defer></script>
+</body>
+</html>
